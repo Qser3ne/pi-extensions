@@ -4,3 +4,6 @@
 [submodule "pi-token-speed"]
 	path = pi-token-speed
 	url = git@github.com:Qser3ne/pi-token-speed.git
+[submodule "pi-daybreak"]
+	path = pi-daybreak
+	url = git@github.com:Qser3ne/pi-daybreak.git

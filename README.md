@@ -6,6 +6,22 @@
 | --- | --- |
 | `pi-sub2api-usage` | [Qser3ne/pi-sub2api-usage](https://github.com/Qser3ne/pi-sub2api-usage) |
 | `pi-token-speed` | [Qser3ne/pi-token-speed](https://github.com/Qser3ne/pi-token-speed) |
+| `pi-daybreak` | [Qser3ne/pi-daybreak](https://github.com/Qser3ne/pi-daybreak) |
+
+## 安装到 Pi
+
+这三个目录是开发源码；Pi 使用独立的 Git 安装副本。固定到各子模块当前提交安装：
+
+```bash
+for extension in pi-sub2api-usage pi-token-speed pi-daybreak; do
+  commit=$(git -C "$extension" rev-parse HEAD) || exit 1
+  pi install "git:github.com/Qser3ne/$extension@$commit" || exit 1
+done
+```
+
+安装后在当前 Pi 会话执行 `/reload`。开发目录中的修改不会自动同步到 Pi 安装副本，需要先提交、推送，再重新安装对应提交。
+
+Daybreak 从旧的 `~/.pi/agent/extensions/daybreak/` 自动发现安装迁移时，须先备份并移走旧目录，避免重复加载。
 
 ## 克隆
 
@@ -67,7 +83,11 @@ git -C pi-token-speed fetch origin
 git -C pi-token-speed switch main
 git -C pi-token-speed merge --ff-only origin/main
 
-git add pi-sub2api-usage pi-token-speed
+git -C pi-daybreak fetch origin
+git -C pi-daybreak switch main
+git -C pi-daybreak merge --ff-only origin/main
+
+git add pi-sub2api-usage pi-token-speed pi-daybreak
 git commit -m "Update extension submodules"
 ```
 
