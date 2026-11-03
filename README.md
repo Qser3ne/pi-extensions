@@ -4,7 +4,7 @@
 
 | 子模块 | 远程仓库 |
 | --- | --- |
-| `pi-sub2api-usage` | [Qser3ne/pi-sub2api-usage](https://github.com/Qser3ne/pi-sub2api-usage) |
+| `pi-qser3ne-patch` | [Qser3ne/pi-qser3ne-patch](https://github.com/Qser3ne/pi-qser3ne-patch) |
 | `pi-token-speed` | [Qser3ne/pi-token-speed](https://github.com/Qser3ne/pi-token-speed) |
 | `pi-daybreak` | [Qser3ne/pi-daybreak](https://github.com/Qser3ne/pi-daybreak) |
 
@@ -13,7 +13,7 @@
 这三个目录是开发源码；Pi 使用独立的 Git 安装副本。固定到各子模块当前提交安装：
 
 ```bash
-for extension in pi-sub2api-usage pi-token-speed pi-daybreak; do
+for extension in pi-qser3ne-patch pi-token-speed pi-daybreak; do
   commit=$(git -C "$extension" rev-parse HEAD) || exit 1
   pi install "git:github.com/Qser3ne/$extension@$commit" || exit 1
 done
@@ -31,7 +31,7 @@ Daybreak 从旧的 `~/.pi/agent/extensions/daybreak/` 自动发现安装迁移�
 git clone --recurse-submodules <父仓库地址>
 ```
 
-子模块使用 SSH 地址，需要具备相应的 GitHub SSH 访问权限。
+部分子模块使用 SSH 地址，需要具备相应的 GitHub SSH 访问权限；`pi-qser3ne-patch` 使用 HTTPS。
 
 如果已经克隆了父仓库，在父仓库根目录执行：
 
@@ -75,9 +75,9 @@ git push origin main
 以下命令会改变父仓库记录的版本，应确保子模块没有未提交改动，并在检查、测试后提交：
 
 ```bash
-git -C pi-sub2api-usage fetch origin
-git -C pi-sub2api-usage switch main
-git -C pi-sub2api-usage merge --ff-only origin/main
+git -C pi-qser3ne-patch fetch origin
+git -C pi-qser3ne-patch switch main
+git -C pi-qser3ne-patch merge --ff-only origin/main
 
 git -C pi-token-speed fetch origin
 git -C pi-token-speed switch main
@@ -87,7 +87,7 @@ git -C pi-daybreak fetch origin
 git -C pi-daybreak switch main
 git -C pi-daybreak merge --ff-only origin/main
 
-git add pi-sub2api-usage pi-token-speed pi-daybreak
+git add pi-qser3ne-patch pi-token-speed pi-daybreak
 git commit -m "Update extension submodules"
 ```
 

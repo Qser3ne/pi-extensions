@@ -1,6 +1,6 @@
-[submodule "pi-sub2api-usage"]
-	path = pi-sub2api-usage
-	url = git@github.com:Qser3ne/pi-sub2api-usage.git
+[submodule "pi-qser3ne-patch"]
+	path = pi-qser3ne-patch
+	url = https://github.com/Qser3ne/pi-qser3ne-patch.git
 [submodule "pi-token-speed"]
 	path = pi-token-speed
 	url = git@github.com:Qser3ne/pi-token-speed.git
