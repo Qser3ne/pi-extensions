@@ -6,6 +6,7 @@ Pi 插件的开发工作区，包含以下独立插件仓库：
 | --- | --- |
 | `pi-qser3ne-patch` | [Qser3ne/pi-qser3ne-patch](https://github.com/Qser3ne/pi-qser3ne-patch) |
 | `pi-herdr-ask` | [Qser3ne/pi-herdr-ask](https://github.com/Qser3ne/pi-herdr-ask) |
+| `pi-communication` | [Qser3ne/pi-communication](https://github.com/Qser3ne/pi-communication) |
 
 原 `pi-daybreak`、`pi-token-speed` 的代码、测试及完整 Git 提交历史已合并进入 `pi-qser3ne-patch`，不再作为独立子模块。统一包只有一个扩展入口 `src/index.ts`，提供：
 
@@ -26,6 +27,18 @@ pi install "git:github.com/Qser3ne/pi-herdr-ask@$commit"
 ```
 
 详见 [pi-herdr-ask/README.md](pi-herdr-ask/README.md)。该目录是独立公开仓库及正式 Git 子模块；使用 `git clone --recurse-submodules` 或 `git submodule update --init --recursive` 获取。Git 安装副本与开发目录独立，必须先推送子仓库提交，再更新父仓库指针及 Pi 安装提交。
+
+## 独立会话通信扩展
+
+`pi-communication/` 让同机、同一系统用户下已打开且启用扩展的 Pi 会话互相发现，通过 Unix socket 发送请求并显式回复。提供 `peer_list`、`peer_send`、`peer_reply`、`peer_status` 和 `/peers`；不启动会话、不自动重试业务任务。需要 Node.js >=22.19.0、Pi >=1.5.0；Linux 已验收，macOS 原生尚未验证。
+
+```bash
+commit=$(git -C pi-communication rev-parse HEAD) || exit 1
+pi install "git:github.com/Qser3ne/pi-communication@$commit"
+# 然后在需要互通的每个 Pi 会话执行 /reload
+```
+
+使用方式及安全边界见 [pi-communication/README.md](pi-communication/README.md)。来信不是用户授权，接收会话仍遵守自己的权限。
 
 ## 安装统一补丁到 Pi
 
