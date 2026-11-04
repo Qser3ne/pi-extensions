@@ -1,10 +1,11 @@
 # pi-extensions
 
-统一 Pi 插件的开发工作区；当前只维护一个插件子仓库：
+Pi 插件的开发工作区，包含以下独立插件仓库：
 
 | 子模块 | 远程仓库 |
 | --- | --- |
 | `pi-qser3ne-patch` | [Qser3ne/pi-qser3ne-patch](https://github.com/Qser3ne/pi-qser3ne-patch) |
+| `pi-herdr-ask` | 本地独立子仓库，尚未配置远程；桥接提问等待状态到 herdr |
 
 原 `pi-daybreak`、`pi-token-speed` 的代码、测试及完整 Git 提交历史已合并进入 `pi-qser3ne-patch`，不再作为独立子模块。统一包只有一个扩展入口 `src/index.ts`，提供：
 
@@ -14,7 +15,18 @@
 
 详细使用说明见 [pi-qser3ne-patch/README.md](pi-qser3ne-patch/README.md)。旧 GitHub 仓库不删除，但后续统一在新仓库维护。
 
-## 安装到 Pi
+## herdr 提问状态扩展
+
+`pi-herdr-ask/` 仅接入 `ask_user_question`，提问期间上报 `blocked/question`，回答或取消后恢复 Pi 原生状态。安装：
+
+```bash
+pi install /home/qser3ne/application/pi-extensions/pi-herdr-ask
+# 然后在 Pi 执行 /reload
+```
+
+详见本地 `pi-herdr-ask/README.md`。该目录有独立 Git 历史，父仓库暂时忽略其内容；尚未发布远程，因此克隆父仓库不会获得它。配置远程后再登记为正式子模块，避免提交不可克隆的子模块地址。
+
+## 安装统一补丁到 Pi
 
 开发目录与 Pi 管理的 Git 安装副本相互独立。先推送插件仓库，再固定到审核过的提交安装：
 
