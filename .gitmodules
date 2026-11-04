@@ -1,3 +1,6 @@
 [submodule "pi-qser3ne-patch"]
 	path = pi-qser3ne-patch
 	url = https://github.com/Qser3ne/pi-qser3ne-patch.git
+[submodule "pi-herdr-ask"]
+	path = pi-herdr-ask
+	url = https://github.com/Qser3ne/pi-herdr-ask.git

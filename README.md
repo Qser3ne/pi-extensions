@@ -5,7 +5,7 @@ Pi 插件的开发工作区，包含以下独立插件仓库：
 | 子模块 | 远程仓库 |
 | --- | --- |
 | `pi-qser3ne-patch` | [Qser3ne/pi-qser3ne-patch](https://github.com/Qser3ne/pi-qser3ne-patch) |
-| `pi-herdr-ask` | 本地独立子仓库，尚未配置远程；桥接提问等待状态到 herdr |
+| `pi-herdr-ask` | [Qser3ne/pi-herdr-ask](https://github.com/Qser3ne/pi-herdr-ask) |
 
 原 `pi-daybreak`、`pi-token-speed` 的代码、测试及完整 Git 提交历史已合并进入 `pi-qser3ne-patch`，不再作为独立子模块。统一包只有一个扩展入口 `src/index.ts`，提供：
 
@@ -20,11 +20,12 @@ Pi 插件的开发工作区，包含以下独立插件仓库：
 `pi-herdr-ask/` 仅接入 `ask_user_question`，提问期间上报 `blocked/question`，回答或取消后恢复 Pi 原生状态。安装：
 
 ```bash
-pi install /home/qser3ne/application/pi-extensions/pi-herdr-ask
+commit=$(git -C pi-herdr-ask rev-parse HEAD) || exit 1
+pi install "git:github.com/Qser3ne/pi-herdr-ask@$commit"
 # 然后在 Pi 执行 /reload
 ```
 
-详见本地 `pi-herdr-ask/README.md`。该目录有独立 Git 历史，父仓库暂时忽略其内容；尚未发布远程，因此克隆父仓库不会获得它。配置远程后再登记为正式子模块，避免提交不可克隆的子模块地址。
+详见 [pi-herdr-ask/README.md](pi-herdr-ask/README.md)。该目录是独立公开仓库及正式 Git 子模块；使用 `git clone --recurse-submodules` 或 `git submodule update --init --recursive` 获取。Git 安装副本与开发目录独立，必须先推送子仓库提交，再更新父仓库指针及 Pi 安装提交。
 
 ## 安装统一补丁到 Pi
 
@@ -48,7 +49,7 @@ git pull --ff-only
 git submodule update --init --recursive
 ```
 
-父仓库记录统一插件的固定提交；子模块处于 detached HEAD 是正常现象。更新前确保没有未提交的开发改动。
+父仓库记录各插件的固定提交；子模块处于 detached HEAD 是正常现象。更新前确保没有未提交的开发改动。
 
 ## 开发与发布
 
