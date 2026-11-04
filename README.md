@@ -1,101 +1,67 @@
 # pi-extensions
 
-使用 Git Submodule 汇总管理独立的 Pi 扩展仓库。父仓库只记录各子仓库的地址和固定提交，不复制其完整历史。
+统一 Pi 插件的开发工作区；当前只维护一个插件子仓库：
 
 | 子模块 | 远程仓库 |
 | --- | --- |
 | `pi-qser3ne-patch` | [Qser3ne/pi-qser3ne-patch](https://github.com/Qser3ne/pi-qser3ne-patch) |
-| `pi-token-speed` | [Qser3ne/pi-token-speed](https://github.com/Qser3ne/pi-token-speed) |
-| `pi-daybreak` | [Qser3ne/pi-daybreak](https://github.com/Qser3ne/pi-daybreak) |
+
+原 `pi-daybreak`、`pi-token-speed` 的代码、测试及完整 Git 提交历史已合并进入 `pi-qser3ne-patch`，不再作为独立子模块。统一包只有一个扩展入口 `src/index.ts`，提供：
+
+- Codex 双账号、Fast 兼容和订阅额度显示。
+- Daybreak Blue 开关及服务端确认状态。
+- 实时 token 速度、TTFT 和长窗口平均速度。
+
+详细使用说明见 [pi-qser3ne-patch/README.md](pi-qser3ne-patch/README.md)。旧 GitHub 仓库不删除，但后续统一在新仓库维护。
 
 ## 安装到 Pi
 
-这三个目录是开发源码；Pi 使用独立的 Git 安装副本。固定到各子模块当前提交安装：
+开发目录与 Pi 管理的 Git 安装副本相互独立。先推送插件仓库，再固定到审核过的提交安装：
 
 ```bash
-for extension in pi-qser3ne-patch pi-token-speed pi-daybreak; do
-  commit=$(git -C "$extension" rev-parse HEAD) || exit 1
-  pi install "git:github.com/Qser3ne/$extension@$commit" || exit 1
-done
+commit=$(git -C pi-qser3ne-patch rev-parse HEAD) || exit 1
+pi install "git:github.com/Qser3ne/pi-qser3ne-patch@$commit"
 ```
 
-安装后在当前 Pi 会话执行 `/reload`。开发目录中的修改不会自动同步到 Pi 安装副本，需要先提交、推送，再重新安装对应提交。
+迁移旧安装时，用 `pi list` 查找 `pi-daybreak`、`pi-token-speed` 或旧名 `pi-sub2api-usage` 的完整来源，分别执行 `pi remove <完整旧来源>`，避免重复加载。独立 `@narumitw/pi-usage` 保留 `extensions: []` 配置，因为统一插件已内置其兼容模块。
 
-Daybreak 从旧的 `~/.pi/agent/extensions/daybreak/` 自动发现安装迁移时，须先备份并移走旧目录，避免重复加载。
+若还有手动安装的 `~/.pi/agent/extensions/daybreak/` 或速度统计入口，请先备份并移出自动发现目录。最后在当前 Pi 会话执行 `/reload`；凭据、Fast 偏好和 Daybreak 会话状态无需迁移。
 
-## 克隆
-
-将 `<父仓库地址>` 替换为此仓库发布后的远程地址：
+## 克隆与同步
 
 ```bash
-git clone --recurse-submodules <父仓库地址>
-```
-
-部分子模块使用 SSH 地址，需要具备相应的 GitHub SSH 访问权限；`pi-qser3ne-patch` 使用 HTTPS。
-
-如果已经克隆了父仓库，在父仓库根目录执行：
-
-```bash
-git submodule update --init --recursive
-```
-
-## 同步父仓库记录的版本
-
-```bash
+git clone --recurse-submodules git@github.com:Qser3ne/pi-extensions.git
+cd pi-extensions
 git pull --ff-only
 git submodule update --init --recursive
 ```
 
-这会检出父仓库固定的子模块提交，不一定是子仓库最新版本；子模块处于 detached HEAD 状态是正常的。
+父仓库记录统一插件的固定提交；子模块处于 detached HEAD 是正常现象。更新前确保没有未提交的开发改动。
 
-## 修改子模块
+## 开发与发布
 
-先进入对应子模块，切换到工作分支，再按普通仓库的流程修改、测试、提交和推送。例如：
+需要 Node.js >=22.19.0：
 
 ```bash
-cd pi-token-speed
+cd pi-qser3ne-patch
 git switch main
-# 修改并测试后：
-git add <修改的文件>
-git commit -m "Describe extension changes"
+npm ci
+npm run typecheck
+npm test
+# 修改、测试并提交后：
 git push origin main
 
-# 回到父仓库，记录新的子模块提交：
 cd ..
-git add pi-token-speed
-git commit -m "Update pi-token-speed submodule"
-# 配置父仓库远程地址后再推送：
+git add pi-qser3ne-patch
+git commit -m "Update unified patch extension"
 git push origin main
 ```
 
-应先推送子仓库提交，再推送父仓库指针，避免其他人无法获取对应提交。
-
-## 将子模块升级到远程 main
-
-以下命令会改变父仓库记录的版本，应确保子模块没有未提交改动，并在检查、测试后提交：
-
-```bash
-git -C pi-qser3ne-patch fetch origin
-git -C pi-qser3ne-patch switch main
-git -C pi-qser3ne-patch merge --ff-only origin/main
-
-git -C pi-token-speed fetch origin
-git -C pi-token-speed switch main
-git -C pi-token-speed merge --ff-only origin/main
-
-git -C pi-daybreak fetch origin
-git -C pi-daybreak switch main
-git -C pi-daybreak merge --ff-only origin/main
-
-git add pi-qser3ne-patch pi-token-speed pi-daybreak
-git commit -m "Update extension submodules"
-```
-
-## 查看状态
+必须先推送子仓库，再推送父仓库指针；然后更新 Pi 安装提交。开发源码变化不会自动同步到已安装副本。
 
 ```bash
 git status
 git submodule status
 ```
 
-不要直接删除子模块中的 `.git` 文件；实际 Git 数据存放在父仓库的 `.git/modules/` 下。若要把子模块拆回独立目录，需要先迁移其 Git 数据。
+不要手动删除子模块 `.git` 文件；其 Git 数据由父仓库 `.git/modules/` 管理。
