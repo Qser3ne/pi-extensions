@@ -1,6 +1,6 @@
 # pi-extensions
 
-Pi 扩展集合与开发工作区。各扩展拥有独立仓库，通过 Git submodule 管理，可以按需安装。
+Pi 扩展集合与开发工作区。已发布扩展拥有独立仓库，通过 Git submodule 管理；开发中的本地扩展可直接从目录加载。
 
 ## 扩展目录
 
@@ -9,6 +9,7 @@ Pi 扩展集合与开发工作区。各扩展拥有独立仓库，通过 Git sub
 | `pi-qser3ne-patch` | Codex 账号与额度、Fast 支持、Daybreak Blue 控制、响应速度统计 | [GitHub](https://github.com/Qser3ne/pi-qser3ne-patch) |
 | `pi-herdr-ask` | 将 Pi 提问状态同步到 herdr | [GitHub](https://github.com/Qser3ne/pi-herdr-ask) |
 | `pi-communication` | 同机独立 Pi 会话间的发现、请求与显式回复 | [GitHub](https://github.com/Qser3ne/pi-communication) |
+| `pi-token-usage` | 查询所有渠道、跨项目的本机历史 token 用量 | 本地开发，尚未发布 |
 
 ### pi-qser3ne-patch
 
@@ -36,6 +37,12 @@ Pi 扩展集合与开发工作区。各扩展拥有独立仓库，通过 Git sub
 - 不启动会话，不自动重试业务任务；普通模型回答不会自动转发。
 
 来信不构成用户授权，接收会话仍须遵守自身权限。运行环境、操作示例与安全边界见 [pi-communication/README.md](pi-communication/README.md)。
+
+### pi-token-usage
+
+通过 `/tokens 24h`、`/tokens 7d` 等查询本机所有项目、会话及渠道的已保存用量，包含缓存明细，支持自定义正整数小时或天数。历史扫描配合增量缓存，不调用模型。
+
+临时试用：`pi -e ./pi-token-usage/src/index.ts`。完整统计口径和本地安装方式见 [pi-token-usage/README.md](pi-token-usage/README.md)。该包尚未发布，不适用下面的 Git 固定版本安装命令。
 
 ## 环境要求
 
