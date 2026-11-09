@@ -26,6 +26,5 @@ export function formatReport(report: UsageReport): string {
       lines.push('', `模型：${group.provider ?? '未知渠道'}/${group.model ?? '未知模型'}`, ...details(group.usage));
     }
   }
-  lines.push('', '来源：本机 Pi 已保存记录（跨项目、跨会话、含已保存子代理；非服务商账单）');
   return lines.join('\n');
 }

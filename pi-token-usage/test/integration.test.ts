@@ -76,7 +76,7 @@ test('live RPC lists only used provider-model pairs without starting an agent tu
     assert.ok(report.message.includes(text), text);
   assert.equal(report.message.includes('数据存在缺失或不精确部分'), false);
   assert.equal(report.message.includes('末行尚未写完'), false);
-  for (const text of ['unused-model', 'old-model', '按 provider 统计']) assert.equal(report.message.includes(text), false);
+  for (const text of ['unused-model', 'old-model', '按 provider 统计', '来源：']) assert.equal(report.message.includes(text), false);
   assert.equal(records.some(r => r.type === 'agent_start'), false);
 });
 

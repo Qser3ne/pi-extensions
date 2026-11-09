@@ -47,7 +47,8 @@ test('query all agent and current custom-session roots into durable context-free
   const renderer = h.renderers.get('pi-token-usage.report');
   const component = renderer({ data: h.entries[0].data }, {}, { fg: (_: unknown, text: string) => text });
   const rendered = component.render(120).join('\n');
-  for (const text of ['12,345', '输入', '输出', '缓存读取', '缓存写入', '所有渠道', '本机 Pi 已保存记录']) assert.ok(rendered.includes(text), text);
+  for (const text of ['12,345', '输入', '输出', '缓存读取', '缓存写入', '所有渠道']) assert.ok(rendered.includes(text), text);
+  assert.equal(rendered.includes('来源：'), false);
 });
 test('used model pairs render in TUI and RPC while hidden diagnostics remain in saved report data', async t => {
   const root = await temporary(t), sources = join(root, 'sessions');
@@ -72,11 +73,12 @@ test('used model pairs render in TUI and RPC while hidden diagnostics remain in 
     const rendered = renderer({ data }, {}, { fg: (_: unknown, text: string) => text }).render(120).join('\n');
     for (const text of ['总计：2,020', 'alpha/model-a', 'beta/model-a', 'alpha/model-b', '缓存命中率：9.00%', '缓存命中率：90.00%', '缓存命中率：0.00%'])
       assert.ok(rendered.includes(text), text);
-    for (const text of ['数据存在缺失或不精确部分', '末行尚未写完', 'unused-model', '按 provider 统计'])
+    for (const text of ['数据存在缺失或不精确部分', '末行尚未写完', 'unused-model', '按 provider 统计', '来源：'])
       assert.equal(rendered.includes(text), false, text);
     if (mode === 'rpc') {
       assert.ok(h.notices.at(-1)?.includes('缓存命中率：9.00%'));
       assert.equal(h.notices.at(-1)?.includes('末行尚未写完'), false);
+      assert.equal(h.notices.at(-1)?.includes('来源：'), false);
       assert.equal(h.noticeLevels.at(-1), 'info');
     }
     const { models: _models, ...old } = data;
