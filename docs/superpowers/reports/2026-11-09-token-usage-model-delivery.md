@@ -39,4 +39,4 @@
 
 ## 集成状态
 
-实现保留在 feat/token-usage-model 隔离 worktree，等待用户本地集成决定；尚未合入 main。主工作区的 pi-qser3ne-patch 与 AGENTS.md 未改动。
+用户选择本地合入 main 后，已从 f977f9d 快进合入 ea7c567。合并后的主工作区重新验证：65/65 测试通过、0 跳过，严格类型检查、npm 打包预检与 diff 检查均通过。未推送、未执行 /reload，主工作区的 pi-qser3ne-patch 与 AGENTS.md 未改动。现有隔离 worktree 及其分支继续保留，不删除其中的历史执行记录。
