@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { normalizeUsage, recordKey } from './query.ts';
 import type { FileSnapshot } from './reader.ts';
+export { SnapshotCache } from './memory-cache.ts';
 
 function cachePath(dir: string, path: string): string { return join(dir, recordKey(path) + '.json'); }
 function valid(value: unknown, path: string): value is FileSnapshot {
