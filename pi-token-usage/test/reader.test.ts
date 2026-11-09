@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { appendFile, mkdir, symlink, writeFile } from 'node:fs/promises';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { appendFile, chmod, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { discoverFiles, readUsageFile } from '../src/reader.ts';
 import { header, message, session, temporary, time } from './fixtures.ts';
@@ -31,6 +33,81 @@ test('discover recursively without duplicate roots or symlink loops; ignore arti
   const artifact = await readUsageFile(join(root, 'events.jsonl'));
   assert.equal(artifact.records.length, 0);
 });
+test('discovery uses directory entries without statting every ordinary child file', async t => {
+  const root = await temporary(t), child = join(root, 'child'); await mkdir(child);
+  await session(join(child, 's.jsonl'), [message()]);
+  for (let i = 0; i < 20; i++) await writeFile(join(child, i + '.txt'), 'artifact');
+  const original = fs.promises.lstat, checked: string[] = [];
+  t.mock.method(fs.promises, 'lstat', (...args: any[]) => {
+    checked.push(String(args[0])); return Reflect.apply(original, fs.promises, args);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  assert.deepEqual((await discoverFiles([root])).files, [join(child, 's.jsonl')]);
+  assert.deepEqual(checked.filter(p => p.endsWith('.txt') || p.endsWith('.jsonl')), []);
+});
+
+test('wide discovery overlaps directory reads without exceeding eight active reads', async t => {
+  const root = await temporary(t);
+  const expected: string[] = [];
+  for (let i = 0; i < 24; i++) {
+    const dir = join(root, String(i)); await mkdir(dir);
+    const path = join(dir, 's.jsonl'); await session(path, [message(String(i))]); expected.push(path);
+  }
+  const original = fs.promises.readdir; let active = 0, peak = 0;
+  t.mock.method(fs.promises, 'readdir', async (...args: any[]) => {
+    active++; peak = Math.max(peak, active);
+    try { return await Reflect.apply(original, fs.promises, args); }
+    finally { active--; }
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  assert.deepEqual((await discoverFiles([root])).files, expected.sort());
+  assert.ok(peak > 1 && peak <= 8, 'peak directory reads: ' + peak);
+});
+
+test('deep discovery preserves explicit file roots root aliases and sorted deduplication', async t => {
+  const root = await temporary(t), top = join(root, 'top.jsonl'), alias = join(root, 'alias');
+  await session(top, [message('top')]);
+  let dir = root;
+  for (let i = 0; i < 30; i++) { dir = join(dir, 'd'); await mkdir(dir); }
+  const deep = join(dir, 'deep.jsonl'); await session(deep, [message('deep')]);
+  await symlink(root, alias);
+  const result = await discoverFiles([alias, top, dir, root, deep]);
+  assert.deepEqual(result.files, [top, deep].sort());
+  assert.deepEqual(result.warnings, []);
+});
+
+test('a queued directory replaced by an internal symlink is not followed', async t => {
+  const root = await temporary(t), outside = await temporary(t), child = join(root, 'child');
+  await mkdir(child); await session(join(outside, 'secret.jsonl'), [message()]);
+  const original = fs.promises.readdir; let replaced = false;
+  t.mock.method(fs.promises, 'readdir', async (...args: any[]) => {
+    const result = await Reflect.apply(original, fs.promises, args);
+    if (String(args[0]) === root && !replaced) {
+      replaced = true; await fs.promises.rmdir(child); await symlink(outside, child);
+    }
+    return result;
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const result = await discoverFiles([root]);
+  assert.equal(replaced, true);
+  assert.deepEqual(result.files, []);
+});
+
+test('discovery retains permission diagnostics while scanning accessible siblings', async t => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) { t.skip('requires non-root POSIX permissions'); return; }
+  const root = await temporary(t), denied = join(root, 'denied'), visible = join(root, 'visible.jsonl');
+  await mkdir(denied); await session(visible, [message()]);
+  await chmod(denied, 0o000);
+  try {
+    const result = await discoverFiles([root]);
+    assert.deepEqual(result.files, [visible]);
+    assert.ok(result.warnings.some(w => w.includes(denied)));
+  } finally { await chmod(denied, 0o700); }
+});
+
 test('timestamp belongs to each record with message fallback and invalid usage warnings', async t => {
   const root = await temporary(t); const path = join(root, 'a.jsonl');
   const a = message('a', 10, { timestamp: '2026-11-07T10:00:00Z' });

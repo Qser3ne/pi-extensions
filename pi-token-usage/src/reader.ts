@@ -11,28 +11,41 @@ export interface FileSnapshot {
   headerValid: boolean; parentSource?: string; startedAt?: number; records: UsageRecord[]; warnings: string[];
 }
 export async function discoverFiles(roots: string[]): Promise<{ files: string[]; warnings: string[] }> {
-  const files: string[] = [], warnings: string[] = [];
-  const visited = new Set<string>();
-  async function walk(path: string): Promise<void> {
-    if (visited.has(path)) return;
-    visited.add(path);
-    try {
-      const stat = await lstat(path);
-      // Do not follow arbitrary artifact symlinks outside the selected roots.
-      if (stat.isSymbolicLink()) return;
-      if (stat.isDirectory()) {
-        for (const item of await readdir(path, { withFileTypes: true })) await walk(join(path, item.name));
-      } else if (stat.isFile() && path.endsWith('.jsonl')) files.push(path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push(`无法读取会话路径：${path}`);
-    }
-  }
+  const files = new Set<string>(), warnings: string[] = [], visited = new Set<string>();
+  let pending: string[] = [];
+  const enqueue = (path: string) => {
+    if (!visited.has(path)) { visited.add(path); pending.push(path); }
+  };
   for (const root of roots) {
     if (!root) continue;
-    try { await walk(await realpath(resolve(root))); }
+    try { enqueue(await realpath(resolve(root))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push(`无法读取会话根目录：${root}`); }
   }
-  return { files: files.sort(), warnings };
+  while (pending.length) {
+    const batch = pending; pending = [];
+    let next = 0;
+    async function worker(): Promise<void> {
+      while (next < batch.length) {
+        const path = batch[next++];
+        try {
+          // Recheck queued directories: their type may have changed since readdir.
+          const stat = await lstat(path);
+          if (stat.isSymbolicLink()) continue;
+          if (stat.isDirectory()) {
+            for (const item of await readdir(path, { withFileTypes: true })) {
+              const child = join(path, item.name);
+              if (item.isDirectory()) enqueue(child);
+              else if (item.isFile() && item.name.endsWith('.jsonl')) files.add(child);
+            }
+          } else if (stat.isFile() && path.endsWith('.jsonl')) files.add(path);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push(`无法读取会话路径：${path}`);
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(8, batch.length) }, () => worker()));
+  }
+  return { files: [...files].sort(), warnings };
 }
 
 function object(value: unknown): Record<string, any> | undefined {
