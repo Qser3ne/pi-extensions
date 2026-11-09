@@ -40,15 +40,15 @@
 - 产出：`modelKey(provider: string | undefined, model: string | undefined): string`，JSON 二元组编码，供既有分组和名单匹配共用。
 - 扩展：`collectUsage(options)` 新增 `allowedModels?: readonly ModelIdentity[]`；undefined 保留旧内部行为，[] 严格零结果，存在参数时返回 scope 标记。
 
-- [ ] **Step 1: 写失败回归**
+- [x] **Step 1: 写失败回归**
   - `filters totals groups counts and cache rates by exact model pairs`：允许 A/shared（input 10、cacheRead 90、total 100），排除 B/shared（total 900）及未知来源（7）；断言 total=100、recordCount=1、models 只有 A/shared、缓存率=90%，空名单为 0。
   - `model identities do not collide`：A/B + C 与 A + B/C 不串组；真实 unknown/null 字符串不等于缺失归属；重复名单不重复计数。
   - `filtering follows full child reconciliation`：子文件 A/kept=10、B/removed=20，父工具汇总带父模型与总量 35；只允许 A 与父模型，结果只含 10，不能把子汇总或未知差额 5 计回父模型。含继承/复制记录的变体仍只计一次。
   - `model changes reuse complete snapshots`：同一 SnapshotCache 依次查询 [A]、[B]、[]、[A,B]，总量依次 100、900、0、1000；磁盘命中与无过滤内部调用仍保留所有历史，快照未丢未知记录。
-- [ ] **Step 2: 运行 RED**：`node --experimental-strip-types --disable-warning=ExperimentalWarning --test test/model-filter.test.ts`；应因缺少过滤/范围标记或 helper 失败，不因夹具错误。
-- [ ] **Step 3: 最小实现**：引入类型及共用 modelKey，仅在 collector 的 reconcile 后、aggregate 前裁剪记录；可选参数存在时加 scope。不要修改 reader/cache/subagents 算法或快照内容。
-- [ ] **Step 4: 运行 GREEN**：上述定向测试、`npm test && npm run typecheck`；全部通过且旧内部收集测试口径不变。
-- [ ] **Step 5: 提交**：`feat: filter usage by selected provider-model identities`，仅包含本任务源文件和测试。
+- [x] **Step 2: 运行 RED**：`node --experimental-strip-types --disable-warning=ExperimentalWarning --test test/model-filter.test.ts`；应因缺少过滤/范围标记或 helper 失败，不因夹具错误。
+- [x] **Step 3: 最小实现**：引入类型及共用 modelKey，仅在 collector 的 reconcile 后、aggregate 前裁剪记录；可选参数存在时加 scope。不要修改 reader/cache/subagents 算法或快照内容。
+- [x] **Step 4: 运行 GREEN**：上述定向测试、`npm test && npm run typecheck`；全部通过且旧内部收集测试口径不变。
+- [x] **Step 5: 提交**：`feat: filter usage by selected provider-model identities`，仅包含本任务源文件和测试。
 
 ### Task 2: 两个命令、名单读取及兼容展示
 
@@ -61,7 +61,7 @@
 - 名单在收集前读取：非空 scope 取 `entry.model`，否则 `getAvailable()`；复制成 `{provider,id}`，在查询 try/catch 内处理失败，不调用 refresh/getApiKey/complete。
 - formatReport 仅在 `scope === 'current-models'` 时将标题范围显示为“当前模型列表”；缺少标记的旧报告保留“所有渠道”。
 
-- [ ] **Step 1: 写失败回归并更新明确淘汰的旧命令断言**
+- [x] **Step 1: 写失败回归并更新明确淘汰的旧命令断言**
   - `registers token and token-usage only`：keys 为这两个命令，旧 tokens 不存在；无效输入不扫描、不读取名单。
   - `shortcut equals explicit 24h`：固定时钟下两命令 range、usage、models、recordCount 相同；shortcut 拒绝 `7d` 等参数且不扫描，token 仍拒绝无单位/零/负数。
   - `current picker scope is read on every command`：scoped=[A]、available=[A,B] 时仅 A；清 scope 后 A+B；两命令都在同一实例重复切换名单且结果即时变化。scoped 非空时 getAvailable 设为抛错也不应调用；空 available 得到零而非全历史。
@@ -69,10 +69,10 @@
   - `range labeling preserves old durable reports`：新范围标记显示当前模型列表；无标记的旧分组报告与 provider-only 报告仍显示所有渠道，不恢复脚注或警告。
   - 真实 RPC 配置本地模型夹具与假 apiKey，`--offline` 无模型生成；一个进程依次调用两命令，允许/排除的同 ID 跨 provider 结果正确、24h 相等且无 agent_start；用离线 scope 保证环境密钥不扩大名单。
   - bundled loader 仅注册两个新命令，不增加模型 provider 或工具。
-- [ ] **Step 2: 运行 RED**：定向 extension/format/integration 测试；确认失败来自命令、范围和名单行为未实现。
-- [ ] **Step 3: 最小实现及用户文档同步**：命令共用查询路径；按 Interfaces 读取名单与设置范围。更新所有活跃用法中的 /tokens，保留仅用于说明旧命令已移除的历史提及。
-- [ ] **Step 4: 运行 GREEN**：定向测试、`npm test && npm run typecheck && npm pack --dry-run && git diff --check`；真实 RPC 与 bundled loader 不跳过。
-- [ ] **Step 5: 提交**：`feat: add token-usage shortcut and rename token command`。
+- [x] **Step 2: 运行 RED**：定向 extension/format/integration 测试；确认失败来自命令、范围和名单行为未实现。
+- [x] **Step 3: 最小实现及用户文档同步**：命令共用查询路径；按 Interfaces 读取名单与设置范围。更新所有活跃用法中的 /tokens，保留仅用于说明旧命令已移除的历史提及。
+- [x] **Step 4: 运行 GREEN**：定向测试、`npm test && npm run typecheck && npm pack --dry-run && git diff --check`；真实 RPC 与 bundled loader 不跳过。
+- [x] **Step 5: 提交**：`feat: add token-usage shortcut and rename token command`。
 
 ## 收尾（不是独立代码任务）
 
@@ -80,4 +80,4 @@
 
 ## 计划作者自检
 
-规范各项已映射到两个任务或收尾；五个 Review Focus 均落在上述回归。身份接口与 SDK model.id 一致，源记录仍使用 model；未增加跨任务未知函数。两任务均有明确 RED/GREEN/提交边界，未授权任何新子代理。待用户确认计划后执行。
+规范各项已映射到两个任务或收尾；五个 Review Focus 均落在上述回归。身份接口与 SDK model.id 一致，源记录仍使用 model；未增加跨任务未知函数。两任务均有明确 RED/GREEN/提交边界，未授权任何新子代理。用户已确认直接实现，两任务的 RED/GREEN、提交及完整验证均已完成。
