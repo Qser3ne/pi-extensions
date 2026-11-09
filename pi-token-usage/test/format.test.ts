@@ -28,7 +28,9 @@ test('model report replaces provider breakdown without unused placeholders', () 
 
 test('reports omit the source footer for current legacy and empty data', () => {
   const { models: _models, ...legacy } = report;
-  for (const data of [report, legacy as UsageReport, { ...report, models: [], recordCount: 0 }]) {
+  const empty = { ...report, models: [], recordCount: 0,
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 } };
+  for (const data of [report, legacy as UsageReport, empty]) {
     const rendered = formatReport(data);
     assert.equal(rendered.includes('来源：'), false);
     assert.equal(rendered.includes('本机 Pi 已保存记录'), false);
