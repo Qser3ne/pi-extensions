@@ -36,8 +36,8 @@ export function extractChildSummary(value: unknown, source: string): {
 export function splitSummary(record: UsageRecord, message: unknown): UsageRecord[] {
   const summary = extractChildSummary(message, record.source);
   if (!summary.recognized) return [record];
-  // A tool aggregate can span providers; the parent's provider is not attribution.
-  record = { ...record, provider: undefined };
+  // A tool aggregate can span models/providers; the parent's selection is not attribution.
+  record = { ...record, provider: undefined, model: undefined };
   if (summary.parts && fields.every(field => summary.parts!.reduce((n, p) => n + p.usage[field], 0) === record.usage[field])) {
     return summary.parts.map((part, index) => ({ ...record, key: record.key + ':' + index, usage: part.usage,
       childRefs: part.ref ? [part.ref] : [], summaryKey: part.identity }));
@@ -49,7 +49,7 @@ export function reconcileSubagents(records: UsageRecord[], availableFiles: Set<s
   const warnings = new Set<string>();
   const regular = records.filter(r => !['subagent', 'bg_wait'].includes(r.toolName ?? ''));
   const summaries = records.filter(r => ['subagent', 'bg_wait'].includes(r.toolName ?? ''))
-    .map(r => ({ ...r, provider: undefined }));
+    .map(r => ({ ...r, provider: undefined, model: undefined }));
   const groups = new Map<string, UsageRecord>();
   for (const r of summaries) {
     if (!r.summaryKey) {

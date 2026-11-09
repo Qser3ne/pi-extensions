@@ -12,7 +12,7 @@ const record = (key: string, source: string, n: number): UsageRecord => ({ key, 
 const summary = (key: string, refs: string[], n: number): UsageRecord => ({ ...record(key, '/parent', n), kind: 'toolResult', toolName: 'subagent', childRefs: refs, summaryKey: refs.join('|') });
 
 test('subagent summaries do not inherit the parent provider when split or kept whole', () => {
-  const parent = { ...summary('p', ['/child'], 30), provider: 'parent-provider' };
+  const parent = { ...summary('p', ['/child'], 30), provider: 'parent-provider', model: 'parent-model' };
   const messages = [
     { toolName: 'subagent', details: { results: [{ sessionFile: '/child', usage: usage(30) }] } },
     { toolName: 'bg_wait', details: { completions: [{ results: [{ sessionFile: '/child' }] }] } },
@@ -20,18 +20,21 @@ test('subagent summaries do not inherit the parent provider when split or kept w
   for (const message of messages) {
     const records = splitSummary(parent, message);
     assert.equal(records[0].provider, undefined);
+    assert.equal(records[0].model, undefined);
     assert.equal(records[0].usage.totalTokens, 30);
   }
 });
 
 test('missing child residual is unknown while known child keeps its own provider', () => {
-  const child = { ...record('c', '/child', 10), provider: 'child-provider' };
-  const parent = { ...summary('s', ['/child'], 30), provider: 'parent-provider' };
+  const child = { ...record('c', '/child', 10), provider: 'child-provider', model: 'child-model' };
+  const parent = { ...summary('s', ['/child'], 30), provider: 'parent-provider', model: 'parent-model' };
   const result = reconcileSubagents([child, parent], new Set(['/child', '/parent']));
   assert.equal(result.records.find(r => r.key === 'c')?.provider, 'child-provider');
+  assert.equal(result.records.find(r => r.key === 'c')?.model, 'child-model');
   const residual = result.records.find(r => r.key.startsWith('residual:'));
   assert.equal(residual?.usage.totalTokens, 20);
   assert.equal(residual?.provider, undefined);
+  assert.equal(residual?.model, undefined);
 });
 
 test('fork and clone shared history count once but new branches remain', async t => {

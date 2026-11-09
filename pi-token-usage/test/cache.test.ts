@@ -147,13 +147,37 @@ test('provider attribution survives persistent cache reuse and incremental appen
   const first = await readUsageFile(path); await saveSnapshot(cacheDir, first);
   const cached = await loadSnapshot(cacheDir, path);
   assert.equal(cached?.records[0].provider, 'provider-a');
+  assert.equal(cached?.records[0].model, 'model-a');
   const same = await readUsageFile(path, cached);
   assert.equal(same.records, cached?.records);
-  const b = message('b', 20); b.message.provider = 'provider-b';
+  const b = message('b', 20); b.message.provider = 'provider-b'; b.message.model = 'model-b';
   await appendFile(path, JSON.stringify(b) + '\n');
   const next = await readUsageFile(path, same); await saveSnapshot(cacheDir, next);
-  assert.deepEqual((await loadSnapshot(cacheDir, path))?.records.map(r => r.provider), ['provider-a', 'provider-b']);
+  assert.deepEqual((await loadSnapshot(cacheDir, path))?.records.map(r => [r.provider, r.model]),
+    [['provider-a', 'model-a'], ['provider-b', 'model-b']]);
   assert.equal(JSON.stringify(next).includes('PRIVATE-BODY'), false);
+});
+
+test('protocol 3 snapshots rebuild with model attribution even for unchanged sources', async t => {
+  const root = await temporary(t), path = join(root, 's.jsonl'), cacheDir = join(root, 'cache');
+  await session(path, [message()]);
+  const snapshot = await readUsageFile(path);
+  const old = { ...snapshot, version: 3, records: snapshot.records.map(({ model: _model, ...r }) => r) };
+  await saveSnapshot(cacheDir, old as any);
+  assert.equal(await loadSnapshot(cacheDir, path), undefined);
+  const rebuilt = await readUsageFile(path, old as any);
+  assert.notEqual(rebuilt.records, old.records);
+  assert.equal(rebuilt.records[0].model, 'model-a');
+});
+
+test('cache rejects malformed model metadata rather than reusing corrupt attribution', async t => {
+  const root = await temporary(t), path = join(root, 's.jsonl'), cacheDir = join(root, 'cache');
+  await session(path, [message()]);
+  const snapshot = await readUsageFile(path);
+  for (const model of [42, null, '', ' ', ' model-a ']) {
+    await saveSnapshot(cacheDir, { ...snapshot, records: [{ ...snapshot.records[0], model }] } as any);
+    assert.equal(await loadSnapshot(cacheDir, path), undefined, JSON.stringify(model));
+  }
 });
 
 test('large irrelevant message content is not copied into statistical records', async t => {

@@ -93,6 +93,33 @@ test('invalid provider values keep valid usage unattributed', async t => {
   assert.ok(snapshot.records.every(r => r.provider === undefined));
 });
 
+test('reader retains explicit source models without inheriting model selection', async t => {
+  const root = await temporary(t), path = join(root, 'models.jsonl');
+  const missing = message('missing', 20);
+  delete (missing.message as { model?: string }).model;
+  await session(path, [
+    { type: 'model_change', timestamp: time, provider: 'selected', modelId: 'must-not-inherit' },
+    message('a', 10),
+    { type: 'usage', timestamp: time, model: ' local-model ', usage: { input: 30 } },
+    missing,
+    { type: 'compaction', timestamp: time, model: 'compact-model', usage: { output: 40 } },
+    { type: 'branch_summary', timestamp: time, model: 'branch-model', usage: { output: 50 } },
+    { type: 'message', timestamp: time, message: { role: 'toolResult', toolName: 'classify', model: 'tool-model', usage: { input: 60 } } },
+  ]);
+  const snapshot = await readUsageFile(path);
+  assert.deepEqual(snapshot.records.map(r => r.model),
+    ['model-a', 'local-model', undefined, 'compact-model', 'branch-model', 'tool-model']);
+});
+
+test('invalid model metadata preserves valid usage with unknown model attribution', async t => {
+  const root = await temporary(t), path = join(root, 'models.jsonl');
+  await session(path, [null, 42, '', ' '].map((model, i) =>
+    ({ type: 'usage', id: String(i), timestamp: time, model, usage: { input: 1 } })));
+  const snapshot = await readUsageFile(path);
+  assert.equal(snapshot.records.length, 4);
+  assert.ok(snapshot.records.every(r => r.model === undefined));
+});
+
 test('empty or missing discovery root is a valid empty scan', async t => {
   const root = await temporary(t);
   assert.deepEqual((await discoverFiles([join(root, 'missing')])).files, []);

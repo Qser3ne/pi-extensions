@@ -4,7 +4,7 @@ export interface TokenUsage {
 export interface TimeRange { start: number; end: number; amount: number; unit: 'h' | 'd' }
 export interface UsageRecord {
   key: string; timestamp: number; usage: TokenUsage; source: string; kind: string;
-  provider?: string; toolName?: string; childRefs?: string[]; summaryKey?: string; inherited?: boolean;
+  provider?: string; model?: string; toolName?: string; childRefs?: string[]; summaryKey?: string; inherited?: boolean;
 }
 export interface ScanResult { records: UsageRecord[]; warnings: string[] }
 export interface ProviderUsage { provider?: string; usage: TokenUsage; recordCount: number }
