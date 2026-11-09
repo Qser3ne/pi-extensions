@@ -44,4 +44,4 @@
 
 ## 集成状态
 
-实现、文档与档案位于隔离分支，等待用户选择集成；尚未合入 main、推送或 /reload，未改全局 settings。主工作区原有 pi-qser3ne-patch 改动与 AGENTS.md 保持不变。
+用户选择本地合入 main，已从 58e01f0 快进至 cfc55a0；合入后主工作区再次验证 92/92 测试（0 失败、0 跳过）、严格类型检查、打包预检及 diff 检查，均通过。未推送、未执行 /reload、未改全局 settings。原有隔离 worktree 与分支保留；主工作区原有 pi-qser3ne-patch 改动与 AGENTS.md 保持不变。
