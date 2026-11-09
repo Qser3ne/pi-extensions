@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { TimeRange, TokenUsage, UsageRecord, UsageReport } from './types.ts';
+import type { ProviderUsage, TimeRange, TokenUsage, UsageRecord, UsageReport } from './types.ts';
 
 export function parseRange(args: string, now: number): TimeRange {
   const match = /^([1-9]\d*)([hd])$/.exec(args.trim());
@@ -47,16 +47,42 @@ export function recordKey(entry: unknown): string {
   return createHash('sha256').update(canonical(identity)).digest('hex');
 }
 
+export function cacheHitRate(usage: TokenUsage): number | undefined {
+  const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+  return inputTokens > 0 ? usage.cacheRead / inputTokens : undefined;
+}
+
+function emptyUsage(): TokenUsage {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
+}
+function addUsage(target: TokenUsage, usage: TokenUsage): void {
+  for (const field of Object.keys(target) as (keyof TokenUsage)[]) {
+    target[field] += usage[field];
+    if (!Number.isSafeInteger(target[field])) throw new RangeError('用量总和超出安全整数范围');
+  }
+}
+
 export function aggregate(records: UsageRecord[], range: TimeRange, warnings: string[] = []): UsageReport {
-  const usage: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
+  const usage = emptyUsage(), groups = new Map<string | undefined, ProviderUsage>();
   const seen = new Set<string>();
   for (const r of records) {
     if (r.timestamp < range.start || r.timestamp > range.end || seen.has(r.key)) continue;
     seen.add(r.key);
-    for (const field of Object.keys(usage) as (keyof TokenUsage)[]) {
-      usage[field] += r.usage[field];
-      if (!Number.isSafeInteger(usage[field])) throw new RangeError('用量总和超出安全整数范围');
+    addUsage(usage, r.usage);
+    let group = groups.get(r.provider);
+    if (!group) {
+      group = { provider: r.provider, usage: emptyUsage(), recordCount: 0 };
+      groups.set(r.provider, group);
     }
+    addUsage(group.usage, r.usage);
+    group.recordCount++;
   }
-  return { range, usage, warnings: [...new Set(warnings)], recordCount: seen.size };
+  const providers = [...groups.values()].sort((a, b) => {
+    const difference = b.usage.totalTokens - a.usage.totalTokens;
+    if (difference || a.provider === b.provider) return difference;
+    if (a.provider === undefined) return 1;
+    if (b.provider === undefined) return -1;
+    return a.provider < b.provider ? -1 : 1;
+  });
+  return { range, usage, providers, warnings: [...new Set(warnings)], recordCount: seen.size };
 }
