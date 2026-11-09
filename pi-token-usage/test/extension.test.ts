@@ -6,6 +6,11 @@ import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-c
 import extension from '../src/index.ts';
 import { temporary, session, message } from './fixtures.ts';
 
+function fixtureModel(provider: string, id: string) {
+  return { provider, id, name: id, api: 'openai-completions' as const, baseUrl: 'http://127.0.0.1:1',
+    reasoning: false, input: ['text'] as ['text'], contextWindow: 4096, maxTokens: 512,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+}
 function host(mode = 'tui', sessionDir = '/nonexistent') {
   const commands = new Map<string, any>(), renderers = new Map<string, any>(), events = new Map<string, any>();
   const entries: any[] = [], notices: string[] = [], noticeLevels: string[] = [];
@@ -17,21 +22,31 @@ function host(mode = 'tui', sessionDir = '/nonexistent') {
     sendMessage: () => { throw new Error('must not send context'); },
     sendUserMessage: () => { throw new Error('must not call model'); },
   } as unknown as ExtensionAPI;
-  const ctx = { mode, hasUI: mode === 'tui' || mode === 'rpc',
+  const catalog = { scoped: [] as ReturnType<typeof fixtureModel>[],
+    available: [fixtureModel('provider-a', 'model-a'), fixtureModel('alpha', 'model-a'),
+      fixtureModel('beta', 'model-a'), fixtureModel('alpha', 'model-b')] };
+  const forbidden = () => { throw new Error('must not refresh, authenticate or invoke models'); };
+  const ctx = { get scopedModels() { return catalog.scoped.map(model => ({ model })); },
+    modelRegistry: { getAvailable: () => catalog.available, refresh: forbidden, getApiKey: forbidden,
+      getApiKeyAndHeaders: forbidden, complete: forbidden, stream: forbidden, streamSimple: forbidden },
+    mode, hasUI: mode === 'tui' || mode === 'rpc',
     sessionManager: { getSessionDir: () => sessionDir },
     ui: { notify: (text: string, level = 'info') => { notices.push(text); noticeLevels.push(level); } },
   } as unknown as ExtensionCommandContext;
   extension(pi);
-  return { pi, ctx, commands, renderers, events, entries, notices, noticeLevels,
-    run: (arg: string) => commands.get('tokens').handler(arg, ctx) };
+  return { pi, ctx, catalog, commands, renderers, events, entries, notices, noticeLevels,
+    run: (arg: string, command = 'token') => commands.get(command).handler(arg, ctx) };
 }
-test('register only tokens and invalid inputs show usage without scanning or invoking models', async t => {
+test('register token and token-usage only; invalid inputs never scan or read model lists', async t => {
   const root = await temporary(t); process.env.PI_CODING_AGENT_DIR = root;
   t.after(() => { delete process.env.PI_CODING_AGENT_DIR; });
   const h = host();
-  assert.deepEqual([...h.commands.keys()], ['tokens']);
-  for (const arg of ['', '15', 'help', '0d', '1w']) await h.run(arg);
-  assert.equal(h.entries.length, 0); assert.match(h.notices.join(' '), /tokens xh/);
+  assert.deepEqual([...h.commands.keys()], ['token', 'token-usage']);
+  Object.defineProperty(h.ctx, 'scopedModels', { get() { throw new Error('must not read invalid query scope'); } });
+  for (const arg of ['', '15', 'help', '0d', '-1h', '1w']) await h.run(arg);
+  assert.equal(h.entries.length, 0); assert.match(h.notices.join(' '), /token xh/);
+  for (const arg of ['24h', '7d', 'extra']) await h.run(arg, 'token-usage');
+  assert.match(h.notices.at(-1)!, /token-usage/);
   assert.deepEqual(await readdir(root), []);
 });
 test('query all agent and current custom-session roots into durable context-free report', async t => {
@@ -47,7 +62,7 @@ test('query all agent and current custom-session roots into durable context-free
   const renderer = h.renderers.get('pi-token-usage.report');
   const component = renderer({ data: h.entries[0].data }, {}, { fg: (_: unknown, text: string) => text });
   const rendered = component.render(120).join('\n');
-  for (const text of ['12,345', '输入', '输出', '缓存读取', '缓存写入', '所有渠道']) assert.ok(rendered.includes(text), text);
+  for (const text of ['12,345', '输入', '输出', '缓存读取', '缓存写入', '当前模型列表']) assert.ok(rendered.includes(text), text);
   assert.equal(rendered.includes('来源：'), false);
 });
 test('used model pairs render in TUI and RPC while hidden diagnostics remain in saved report data', async t => {
@@ -89,6 +104,65 @@ test('used model pairs render in TUI and RPC while hidden diagnostics remain in 
     await h.run('24h');
     assert.deepEqual(h.entries[1].data.usage, data.usage);
     assert.deepEqual(h.entries[1].data.models, data.models);
+  }
+});
+
+test('shortcut equals explicit 24h at a fixed clock', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'); await mkdir(sources);
+  process.env.PI_CODING_AGENT_DIR = root; t.after(() => { delete process.env.PI_CODING_AGENT_DIR; });
+  const now = Date.parse('2026-11-09T12:00:00Z'); t.mock.method(Date, 'now', () => now);
+  await session(join(sources, 's.jsonl'), [
+    message('inside', 17, { timestamp: new Date(now - 12 * 3600000).toISOString() }),
+    message('outside', 99, { timestamp: new Date(now - 25 * 3600000).toISOString() }),
+  ]);
+  const h = host('rpc', sources);
+  await h.run('  ', 'token-usage'); await h.run('24h');
+  for (const { data } of h.entries) {
+    assert.deepEqual(data.range, { start: now - 86400000, end: now, amount: 24, unit: 'h' });
+    assert.equal(data.usage.totalTokens, 17); assert.equal(data.recordCount, 1);
+    assert.equal(data.scope, 'current-models');
+  }
+  assert.equal(h.entries.length, 2);
+  assert.deepEqual(h.entries[0].data, h.entries[1].data);
+});
+
+test('current picker scope is read on every command without refreshing catalogues', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'); await mkdir(sources);
+  process.env.PI_CODING_AGENT_DIR = root; t.after(() => { delete process.env.PI_CODING_AGENT_DIR; });
+  const a = message('a', 100, { timestamp: new Date().toISOString() });
+  const b = message('b', 900, { timestamp: new Date().toISOString() }); b.message.provider = 'provider-b';
+  await session(join(sources, 's.jsonl'), [a, b]);
+  const h = host('rpc', sources);
+  const A = fixtureModel('provider-a', 'model-a'), B = fixtureModel('provider-b', 'model-a');
+  for (const command of ['token', 'token-usage']) {
+    const args = command === 'token' ? '24h' : '';
+    h.catalog.scoped = [A];
+    h.ctx.modelRegistry.getAvailable = () => { throw new Error('nonempty scope must take priority'); };
+    await h.run(args, command); assert.equal(h.entries.at(-1)?.data.usage.totalTokens, 100);
+    h.catalog.scoped = [B];
+    await h.run(args, command); assert.equal(h.entries.at(-1)?.data.usage.totalTokens, 900);
+    h.catalog.scoped = []; h.catalog.available = [A, B];
+    h.ctx.modelRegistry.getAvailable = () => h.catalog.available;
+    await h.run(args, command); assert.equal(h.entries.at(-1)?.data.usage.totalTokens, 1000);
+    h.catalog.available = [];
+    await h.run(args, command);
+    assert.equal(h.entries.at(-1)?.data.usage.totalTokens, 0);
+    assert.deepEqual(h.entries.at(-1)?.data.models, []);
+  }
+  assert.equal(h.entries.length, 8);
+});
+
+test('registry and scope failures are query errors, never unfiltered fallbacks', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'); await mkdir(sources);
+  process.env.PI_CODING_AGENT_DIR = root; t.after(() => { delete process.env.PI_CODING_AGENT_DIR; });
+  await session(join(sources, 's.jsonl'), [message('a', 10, { timestamp: new Date().toISOString() })]);
+  for (const command of ['token', 'token-usage']) for (const broken of ['scope', 'available']) {
+    const h = host('rpc', sources);
+    if (broken === 'scope') Object.defineProperty(h.ctx, 'scopedModels', { get() { throw new Error('scope unavailable'); } });
+    else h.ctx.modelRegistry.getAvailable = () => { throw new Error('catalogue unavailable'); };
+    await h.run(command === 'token' ? '24h' : '', command);
+    assert.equal(h.entries.length, 0);
+    assert.equal(h.noticeLevels.at(-1), 'error'); assert.match(h.notices.at(-1)!, /用量查询失败/);
   }
 });
 

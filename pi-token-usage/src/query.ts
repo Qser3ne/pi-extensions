@@ -3,7 +3,7 @@ import type { ModelUsage, TimeRange, TokenUsage, UsageRecord, UsageReport } from
 
 export function parseRange(args: string, now: number): TimeRange {
   const match = /^([1-9]\d*)([hd])$/.exec(args.trim());
-  if (!match) throw new RangeError('用法：/tokens xh 或 /tokens xd（x 为正整数）');
+  if (!match) throw new RangeError('用法：/token xh 或 /token xd（x 为正整数）');
   const amount = Number(match[1]);
   const unit = match[2] as 'h' | 'd';
   const duration = amount * (unit === 'h' ? 3600000 : 86400000);

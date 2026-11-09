@@ -4,11 +4,22 @@
 
 执行环境：Node.js 22.23.4、Pi 1.5.0 开发接口、TypeScript 5.9.x。
 
-- `npm test`：83 项通过、0 失败、0 跳过（2026-11-09 查询性能优化）。涵盖窗口解析、多来源求和、缓存明细、实际 Pi 带标签分支去重、继承上下文/重试边界、根目录别名、查询截止点、JSONL 损坏/半行/UTF-8、追加和缓存失效、独立进程并发原子写、真实 POSIX 权限拒绝回退、命令及输出、实际 Pi bundled loader、真实 Pi RPC 和 npm 打包内容。
+- `npm test`：92 项通过、0 失败、0 跳过（2026-11-09 命令与当前模型过滤）。涵盖窗口解析、多来源求和、缓存明细、实际 Pi 带标签分支去重、继承上下文/重试边界、根目录别名、查询截止点、JSONL 损坏/半行/UTF-8、追加和缓存失效、独立进程并发原子写、真实 POSIX 权限拒绝回退、命令及输出、实际 Pi bundled loader、真实 Pi RPC 和 npm 打包内容。
 - `npm run typecheck`：严格 TypeScript 检查。
 - `npm pack --dry-run --json`：校验 src、README、验证说明随包提供，不包含测试或 node_modules。
 
-测试不向 provider 发起请求；实际 Pi loader 使用生产形态的临时包副本，没有物理宿主 peer 依赖，验证宿主模块映射能加载唯一的 `tokens` 命令。真实 Pi RPC 子进程执行 `/tokens 24h`，显示 `provider-a/model-a` 和 `provider-b/model-a` 的夹具合计 123 tokens、整体缓存命中率 81.30%、各模型命中率 97.09% / 0.00%。夹具含全零 unused-model、48 小时前的 old-model 和未完成末行；前两者不出现在模型明细，报告也不显示精度警告。进程以 0 退出，且未产生 agent_start。
+测试不向 provider 发起请求；实际 Pi loader 使用生产形态的临时包副本，没有物理宿主 peer 依赖，验证宿主模块映射仅注册 `token` 与 `token-usage`。真实 Pi RPC 子进程先检查命令列表，再依次执行 `/token-usage` 和 `/token 24h`，使用离线本地模型夹具和 scoped 名单，显示 `provider-a/model-a` 和 `provider-b/model-a` 的夹具合计 123 tokens、整体缓存命中率 81.30%、各模型命中率 97.09% / 0.00%。夹具另含名单外 provider-c/model-a 的 700 tokens、全零 unused-model、48 小时前的 old-model 和未完成末行；它们不进入结果，报告也不显示精度警告。进程以 0 退出，且未产生 agent_start。
+
+## 2026-11-09 命令与当前模型过滤
+
+- 命令：`/token-usage` 空白参数固定滚动 24h，拒绝多余参数；`/token xh`、`/token xd` 取代 `/tokens`，仍要求正整数和单位。固定时钟下两个 24h 查询的范围、整体、模型、记录数完全相同。
+- 当前 /model 默认范围：非空 scoped 优先，否则 available；两命令每次重新读取。scope/available 读取异常不回退全历史，空 available 返回零。无效参数不读名单或扫描。
+- 精确匹配 provider/model：同名跨渠道、斜线、真实 unknown/null、原型键、缺失任一归属和重复名单均覆盖。整体总量/记录数/缓存率与明细同一过滤口径。
+- 完整子代理覆盖协调、继承复制去重之后再过滤；混合允许/排除子模型、携带父模型的汇总及未知未覆盖差额不误归父模型。
+- 同一内存/磁盘缓存切换 A/B/空/AB 名单，分别为 100/900/0/1000，未知 7 仍保存在完整快照；未过滤的内部 collector 调用继续得到 1007。所有用户命令都必须显式传名单。
+- 新报告标记“当前模型列表”；旧 model-grouped、provider-only 报告保留原范围语义，不重算，不恢复警告区或脚注。
+- TDD：Task 1 先观察 5 项断言失败，定向 5 项及全量 88 项通过；Task 2 先观察 12 项命令/范围/RPC/loader 失败，定向 20 项通过，再进行完整验证。
+- 本轮仅作者自检，无新增独立审查。未在运行中的人工 TUI 执行 /reload，也未验证其他 Pi/OS 版本。以下各节是此前版本的历史验证，未知归属计入总量等旧行为不代表当前命令口径。
 
 ## 2026-11-09 查询性能优化
 

@@ -26,6 +26,15 @@ test('model report replaces provider breakdown without unused placeholders', () 
   assert.ok(rendered.indexOf('provider-a/model-a') < rendered.indexOf('provider-b/model-b'));
 });
 
+test('range labeling preserves old durable reports without claiming they were filtered', () => {
+  const scoped = formatReport({ ...report, scope: 'current-models' });
+  assert.match(scoped.split('\n')[0], /当前模型列表/);
+  assert.equal(scoped.includes('所有渠道'), false);
+  assert.match(formatReport(report).split('\n')[0], /所有渠道/);
+  const { models: _models, ...legacy } = report;
+  assert.match(formatReport(legacy as UsageReport).split('\n')[0], /所有渠道/);
+});
+
 test('reports omit the source footer for current legacy and empty data', () => {
   const { models: _models, ...legacy } = report;
   const empty = { ...report, models: [], recordCount: 0,

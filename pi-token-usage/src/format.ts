@@ -1,6 +1,7 @@
 import { cacheHitRate } from './query.ts';
 import type { TokenUsage, UsageReport } from './types.ts';
-export const usageHelp = '用法：/tokens xh 或 /tokens xd（x 为正整数，例如 /tokens 24h、/tokens 7d）';
+export const usageHelp = '用法：/token xh 或 /token xd（x 为正整数，例如 /token 24h、/token 7d）';
+export const shortcutHelp = '用法：/token-usage（固定最近 24 小时，不接受参数）；自定义范围请用 /token xh 或 /token xd';
 export function formatReport(report: UsageReport): string {
   const number = (n: number) => n.toLocaleString('en-US');
   const date = (n: number) => new Date(n).toLocaleString('zh-CN', { hour12: false });
@@ -15,7 +16,7 @@ export function formatReport(report: UsageReport): string {
   };
   const { range, usage } = report;
   const lines = [
-    `Token 用量 · 最近 ${range.amount} ${range.unit === 'h' ? '小时' : '天'} · 所有渠道`,
+    `Token 用量 · 最近 ${range.amount} ${range.unit === 'h' ? '小时' : '天'} · ${report.scope === 'current-models' ? '当前模型列表' : '所有渠道'}`,
     `范围：${date(range.start)} → ${date(range.end)}（本地时间）`,
     ...details(usage),
   ];
