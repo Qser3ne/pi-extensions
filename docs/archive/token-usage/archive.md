@@ -2,7 +2,7 @@
 
 ## Purpose
 
-通过 Pi 用户命令查询本机已保存会话在滚动时间窗口内的 token 用量，跨项目和会话汇总，展示整体及各 provider 的缓存命中率，并标明本地数据的来源边界。
+通过 Pi 用户命令查询本机已保存会话在滚动时间窗口内的 token 用量，跨项目和会话汇总，展示整体及各 provider/model 组合的用量与缓存命中率，并标明本地数据的来源边界。
 
 ## Requirements
 
@@ -57,26 +57,46 @@
 - **THEN** 以各用量记录的时间归属窗口，而不是文件创建或修改时间
 - **AND** 查询终点之后的汇总不能替换窗口内的有效统计
 
-### Requirement: provider 分组与缓存命中率
+### Requirement: provider/model 分组与缓存命中率
 
-扩展 SHALL 在整体及各 provider 分组中显示总量、输入、输出、缓存读取、缓存写入与缓存命中率。缓存命中率 SHALL 为 `cacheRead / (input + cacheRead + cacheWrite) × 100%`，输出 MUST NOT 计入分母。分组 SHALL 按总 token 降序、同量按 provider 名称稳定排序，同量未知分组排在已知分组之后。
+扩展 SHALL 在整体及各 provider/model 组合中显示总量、输入、输出、缓存读取、缓存写入与缓存命中率，MUST NOT 另附独立 provider 汇总区。缓存命中率 SHALL 为 `cacheRead / (input + cacheRead + cacheWrite) × 100%`，输出 MUST NOT 计入分母。分组 SHALL 按总 token 降序；同量完整归属优先，再按 provider、model 名称的字符串顺序稳定排序，缺失字段在已知字段之后。
 
 #### Scenario: 汇总后的加权比例
 
 - **WHEN** 窗口内有不同调用规模、不同缓存效果的记录
-- **THEN** 整体与每个 provider 均先汇总各输入侧分项，再计算命中率，不平均单条记录百分比
+- **THEN** 整体与每个 provider/model 组合均先汇总各输入侧分项，再计算命中率，不平均单条记录百分比
 - **AND** 百分比保留两位小数；没有输入侧 token 时显示 `—`，不显示 NaN 或 Infinity
+
+#### Scenario: 渠道与模型共同归属
+
+- **WHEN** 同一 provider 使用不同模型，或同名模型出现在不同 provider 下
+- **THEN** 各组合分别统计，同一组合的多次调用累计
+- **AND** 组合身份不因名称包含斜线、字面 unknown 或原型键而碰撞
 
 #### Scenario: 明确归属与未知分组
 
-- **WHEN** 用量记录有明确的 provider，或无法确定其归属
-- **THEN** 分别归入其 provider 或“未知（未记录 provider）”，不从当前模型、父代理、相邻消息或路径猜测
-- **AND** 未知内部归属不与真实 provider 名称碰撞，各分组的分项之和与整体一致，同一原始事件的复制历史只参与一个分组
+- **WHEN** 用量记录的 provider、model 字段明确，或其中某个字段缺失/无效
+- **THEN** 仅采用源记录自身的明确字段，去除字段首尾空白；缺失归属分别显示“未知渠道”和“未知模型”，不从当前模型、父代理、相邻消息或路径猜测
+- **AND** 有用量的未知组合仍保留，内部身份不与真实名称碰撞；各分组的分项之和与整体一致，同一原始事件的复制历史只参与一个分组
 
-#### Scenario: 子代理的 provider 归属
+#### Scenario: 子代理的模型归属
 
 - **WHEN** 已有子会话自身的真实用量，或父级汇总仍存在未覆盖差额
-- **THEN** 子记录保留其自身 provider，无法确定归属的汇总及差额列入未知，不借用父代理 provider
+- **THEN** 子记录保留其自身 provider/model，无法确定归属的汇总及差额列入未知，不借用父代理 provider 或 model
+
+### Requirement: 仅展示窗口内实际使用的模型
+
+扩展 SHALL 仅从窗口内去重后的实际记录建立 provider/model 明细，MUST NOT 枚举配置中的模型填充占位项。组合 SHALL 在任一 token 分项或 totalTokens 大于 0 时显示；过滤全零组合 MUST NOT 改变整体用量和整体记录数语义。
+
+#### Scenario: 全零或窗口外模型
+
+- **WHEN** 某组合所有 token 字段均为 0、仅在窗口外使用，或从未产生用量记录
+- **THEN** 模型明细不显示该组合
+
+#### Scenario: 总量与分项不一致但存在用量
+
+- **WHEN** 某组合 totalTokens 为 0 但至少一个分项为正，或仅 totalTokens 为正而分项全零
+- **THEN** 仍显示该组合，保留源记录的总量口径，不因字段不一致隐藏实际用量
 
 ### Requirement: 复制历史和子代理协调
 
@@ -101,7 +121,7 @@
 
 ### Requirement: 报告不进入模型上下文
 
-扩展 SHALL 显示时间范围、所有渠道总量、输入/输出/缓存读取/缓存写入明细、整体及各 provider 的缓存命中率和来源说明，token 数值使用完整整数而非 K/M 缩略。报告 MUST NOT 触发模型调用或进入后续模型上下文。
+扩展 SHALL 显示时间范围、所有渠道总量、输入/输出/缓存读取/缓存写入明细、整体及各模型组合的缓存命中率和来源说明，token 数值使用完整整数而非 K/M 缩略。报告 MUST NOT 触发模型调用或进入后续模型上下文。
 
 #### Scenario: TUI 和 RPC 查询
 
@@ -111,8 +131,8 @@
 
 #### Scenario: 兼容已保存旧报告
 
-- **WHEN** 历史报告数据没有 provider 分组字段
-- **THEN** 仍能显示原有整体数据并计算整体缓存命中率，不编造 provider 明细
+- **WHEN** 历史报告数据没有 models 分组字段，即使保留旧 providers 字段
+- **THEN** 仍能显示原有整体数据并计算整体缓存命中率，不把 provider 当成模型或编造模型明细
 
 #### Scenario: 会话在查询中被替换
 
@@ -121,13 +141,13 @@
 
 ### Requirement: 可重建的增量缓存
 
-扩展 SHALL 在 agent 数据目录的 `pi-token-usage/cache-v1/` 维护可删除重建的统计缓存，仅保存时间、usage、明确的 provider、事件哈希和最小来源信息，MUST NOT 保存对话正文。缓存 SHALL 支持独立进程并发查询，不把缓存当成永久账本。
+扩展 SHALL 在 agent 数据目录的 `pi-token-usage/cache-v1/` 维护可删除重建的统计缓存，仅保存时间、usage、明确的 provider/model、事件哈希和最小来源信息，MUST NOT 保存对话正文。缓存 SHALL 支持独立进程并发查询，不把缓存当成永久账本。
 
 #### Scenario: 重复查询和常规源文件变化
 
 - **WHEN** 源文件未变化，或仅追加完整记录
 - **THEN** 扩展复用已有统计或解析新增完整行
-- **AND** 文件快照只接受当前协议 3；发现替换、截断、同大小改写或无效/旧协议快照时重新扫描对应文件，已删除源文件不继续累计
+- **AND** 文件快照只接受当前协议 4；发现替换、截断、同大小改写或无效/旧协议快照时重新扫描对应文件，已删除源文件不继续累计
 
 #### Scenario: 缓存故障或历史原地改写
 
