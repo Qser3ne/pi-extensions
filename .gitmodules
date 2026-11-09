@@ -7,3 +7,6 @@
 [submodule "pi-communication"]
 	path = pi-communication
 	url = https://github.com/Qser3ne/pi-communication.git
+[submodule "pi-token-usage"]
+	path = pi-token-usage
+	url = https://github.com/Qser3ne/pi-token-usage.git
