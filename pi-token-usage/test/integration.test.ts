@@ -36,7 +36,7 @@ test('actual Pi labeled branching does not duplicate reparented assistant or com
   assert.equal(aggregate(all, parseRange('1d', Date.now())).usage.totalTokens, 20);
 });
 
-test('live Pi RPC executes tokens and exits without starting an agent turn', { timeout: 20000 }, async t => {
+test('live RPC lists only used provider-model pairs without starting an agent turn', { timeout: 20000 }, async t => {
   const root = await temporary(t), agent = join(root, 'agent'), sources = join(agent, 'sessions');
   await mkdir(sources, { recursive: true });
   const now = new Date().toISOString();
@@ -44,7 +44,10 @@ test('live Pi RPC executes tokens and exits without starting an agent turn', { t
   a.message.usage = { input: 3, output: 0, cacheRead: 100, cacheWrite: 0, totalTokens: 103 };
   b.message.provider = 'provider-b';
   const fixture = join(sources, 'fixture.jsonl');
-  await session(fixture, [a, b]); await appendFile(fixture, '{"unfinished":');
+  const zero = message('zero', 0, { timestamp: now }); zero.message.model = 'unused-model';
+  const old = message('old', 999, { timestamp: new Date(Date.parse(now) - 48 * 3600000).toISOString() });
+  old.message.model = 'old-model';
+  await session(fixture, [a, b, zero, old]); await appendFile(fixture, '{"unfinished":');
   const cli = join(dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'))), 'bundle', 'cli.js');
   const child = spawn(process.execPath, [cli, '--mode', 'rpc', '--offline', '--no-session', '--no-extensions', '--no-skills',
     '--no-prompt-templates', '--no-context-files', '--no-tools', '--no-themes', '-e', join(repo, 'src/index.ts')],
@@ -69,10 +72,11 @@ test('live Pi RPC executes tokens and exits without starting an agent turn', { t
   assert.ok(records.some(r => r.type === 'response' && r.id === 'query' && r.success === true), JSON.stringify(records));
   const report = records.find(r => r.type === 'extension_ui_request' && r.method === 'notify' && String(r.message).includes('总计：123'));
   assert.ok(report, JSON.stringify(records));
-  for (const text of ['按 provider 统计', 'provider-a', 'provider-b', '缓存命中率：81.30%', '缓存命中率：97.09%', '缓存命中率：0.00%'])
+  for (const text of ['按模型统计', 'provider-a/model-a', 'provider-b/model-a', '缓存命中率：81.30%', '缓存命中率：97.09%', '缓存命中率：0.00%'])
     assert.ok(report.message.includes(text), text);
   assert.equal(report.message.includes('数据存在缺失或不精确部分'), false);
   assert.equal(report.message.includes('末行尚未写完'), false);
+  for (const text of ['unused-model', 'old-model', '按 provider 统计']) assert.equal(report.message.includes(text), false);
   assert.equal(records.some(r => r.type === 'agent_start'), false);
 });
 

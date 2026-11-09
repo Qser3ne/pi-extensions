@@ -19,11 +19,11 @@ export function formatReport(report: UsageReport): string {
     `范围：${date(range.start)} → ${date(range.end)}（本地时间）`,
     ...details(usage),
   ];
-  // Old durable reports predate provider grouping; do not fabricate attribution.
-  if (report.providers?.length) {
-    lines.push('', '按 provider 统计');
-    for (const group of report.providers) {
-      lines.push('', `provider：${group.provider ?? '未知（未记录 provider）'}`, ...details(group.usage));
+  // Old durable reports lack model grouping; never treat providers as models.
+  if (report.models?.length) {
+    lines.push('', '按模型统计');
+    for (const group of report.models) {
+      lines.push('', `模型：${group.provider ?? '未知渠道'}/${group.model ?? '未知模型'}`, ...details(group.usage));
     }
   }
   lines.push('', '来源：本机 Pi 已保存记录（跨项目、跨会话、含已保存子代理；非服务商账单）');

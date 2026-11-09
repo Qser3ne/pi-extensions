@@ -4,13 +4,24 @@
 
 执行环境：Node.js 22.23.4、Pi 1.5.0 开发接口、TypeScript 5.9.x。
 
-- `npm test`：56 项通过、0 失败、0 跳过（2026-11-09 provider / 缓存命中率更新）。涵盖窗口解析、多来源求和、缓存明细、实际 Pi 带标签分支去重、继承上下文/重试边界、根目录别名、查询截止点、JSONL 损坏/半行/UTF-8、追加和缓存失效、独立进程并发原子写、真实 POSIX 权限拒绝回退、命令及输出、实际 Pi bundled loader、真实 Pi RPC 和 npm 打包内容。
+- `npm test`：65 项通过、0 失败、0 跳过（2026-11-09 provider/model 明细更新）。涵盖窗口解析、多来源求和、缓存明细、实际 Pi 带标签分支去重、继承上下文/重试边界、根目录别名、查询截止点、JSONL 损坏/半行/UTF-8、追加和缓存失效、独立进程并发原子写、真实 POSIX 权限拒绝回退、命令及输出、实际 Pi bundled loader、真实 Pi RPC 和 npm 打包内容。
 - `npm run typecheck`：严格 TypeScript 检查。
 - `npm pack --dry-run --json`：校验 src、README、验证说明随包提供，不包含测试或 node_modules。
 
-测试不向 provider 发起请求；实际 Pi loader 使用生产形态的临时包副本，没有物理宿主 peer 依赖，验证宿主模块映射能加载唯一的 `tokens` 命令。真实 Pi RPC 子进程执行 `/tokens 24h`，显示两个 provider 的夹具合计 123 tokens、整体缓存命中率 81.30%、各 provider 命中率 97.09% / 0.00%。夹具含未完成末行，报告不显示相关警告。进程以 0 退出，且未产生 agent_start。
+测试不向 provider 发起请求；实际 Pi loader 使用生产形态的临时包副本，没有物理宿主 peer 依赖，验证宿主模块映射能加载唯一的 `tokens` 命令。真实 Pi RPC 子进程执行 `/tokens 24h`，显示 `provider-a/model-a` 和 `provider-b/model-a` 的夹具合计 123 tokens、整体缓存命中率 81.30%、各模型命中率 97.09% / 0.00%。夹具含全零 unused-model、48 小时前的 old-model 和未完成末行；前两者不出现在模型明细，报告也不显示精度警告。进程以 0 退出，且未产生 agent_start。
 
-## 2026-11-09 provider 与缓存命中率回归
+## 2026-11-09 provider/model 明细回归
+
+- 读取：保留 assistant、嵌套工具及独立 usage/压缩/分支摘要中的明确 model；trim 空白，无效或缺失 model 不丢弃用量，也不从 model_change 推断。
+- 缓存：文件快照协议 3 → 4；旧协议经持久 loader 和直接 reader 均失效重建，坏模型元数据被拒绝；持久复用与追加保留 model-a/model-b，仍不保存 PRIVATE-BODY。
+- 子代理：拆分/完整汇总及未覆盖差额不继承父 provider/model；已知子记录保持自己的模型。
+- 分组：provider/model 二元组独立统计，同组合跨调用累计；斜线名称、未知值、字面 unknown 与原型键不碰撞。去重、窗口端点及整体记录数语义不变；按总量降序，同量完整归属优先，再按名称稳定排序。
+- 过滤：全零、窗口外及未来模型不显示；输入分项为正但 totalTokens=0，或仅 totalTokens 为正，仍显示；模型分项合计与整体一致。
+- 展示：模型明细替换 provider 区，保留整体与缓存率；未知渠道/未知模型分别标记；旧报告只有 providers 时仅渲染整体。TUI/RPC 合成查询和缓存重复查询一致，零用量模型不显示，诊断仍保存在数据中。
+- TDD：Task 1 先观察 6 项归属/缓存回归失败，随后定向 38 项通过；Task 2 先观察 13 项接口/显示回归失败，随后定向 27 项通过；完整套件 65 项通过，含真实 RPC、bundled loader、并发缓存、POSIX 权限拒绝和打包。
+- 本轮沿用作者单独自检，未派发新独立审查；未做人工作业 TUI 或 `/reload` 验收。原有真实历史耗时仅属首次版本，非本轮模型性能验证。
+
+## 2026-11-09 provider 与缓存命中率回归（先前版本）
 
 - 读取与缓存：明确 provider 归属、不推断相邻模型、无效归属列入未知；文件快照协议 2 → 3，旧快照失效重建；持久缓存与增量追加保留归属，不保存正文。
 - 子代理：父级汇总不继承父 provider；子会话已知部分保留自己的 provider，未覆盖差额列入未知。

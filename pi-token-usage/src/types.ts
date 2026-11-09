@@ -7,7 +7,7 @@ export interface UsageRecord {
   provider?: string; model?: string; toolName?: string; childRefs?: string[]; summaryKey?: string; inherited?: boolean;
 }
 export interface ScanResult { records: UsageRecord[]; warnings: string[] }
-export interface ProviderUsage { provider?: string; usage: TokenUsage; recordCount: number }
+export interface ModelUsage { provider?: string; model?: string; usage: TokenUsage; recordCount: number }
 export interface UsageReport {
-  range: TimeRange; usage: TokenUsage; providers: ProviderUsage[]; warnings: string[]; recordCount: number;
+  range: TimeRange; usage: TokenUsage; models: ModelUsage[]; warnings: string[]; recordCount: number;
 }

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ProviderUsage, TimeRange, TokenUsage, UsageRecord, UsageReport } from './types.ts';
+import type { ModelUsage, TimeRange, TokenUsage, UsageRecord, UsageReport } from './types.ts';
 
 export function parseRange(args: string, now: number): TimeRange {
   const match = /^([1-9]\d*)([hd])$/.exec(args.trim());
@@ -62,27 +62,33 @@ function addUsage(target: TokenUsage, usage: TokenUsage): void {
   }
 }
 
+function compareName(a: string | undefined, b: string | undefined): number {
+  if (a === b) return 0;
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return a < b ? -1 : 1;
+}
+
 export function aggregate(records: UsageRecord[], range: TimeRange, warnings: string[] = []): UsageReport {
-  const usage = emptyUsage(), groups = new Map<string | undefined, ProviderUsage>();
+  const usage = emptyUsage(), groups = new Map<string, ModelUsage>();
   const seen = new Set<string>();
   for (const r of records) {
     if (r.timestamp < range.start || r.timestamp > range.end || seen.has(r.key)) continue;
     seen.add(r.key);
     addUsage(usage, r.usage);
-    let group = groups.get(r.provider);
+    const key = JSON.stringify([r.provider ?? null, r.model ?? null]);
+    let group = groups.get(key);
     if (!group) {
-      group = { provider: r.provider, usage: emptyUsage(), recordCount: 0 };
-      groups.set(r.provider, group);
+      group = { provider: r.provider, model: r.model, usage: emptyUsage(), recordCount: 0 };
+      groups.set(key, group);
     }
     addUsage(group.usage, r.usage);
     group.recordCount++;
   }
-  const providers = [...groups.values()].sort((a, b) => {
+  const models = [...groups.values()].filter(g => Object.values(g.usage).some(n => n > 0)).sort((a, b) => {
     const difference = b.usage.totalTokens - a.usage.totalTokens;
-    if (difference || a.provider === b.provider) return difference;
-    if (a.provider === undefined) return 1;
-    if (b.provider === undefined) return -1;
-    return a.provider < b.provider ? -1 : 1;
+    const complete = (g: ModelUsage) => Number(g.provider !== undefined && g.model !== undefined);
+    return difference || complete(b) - complete(a) || compareName(a.provider, b.provider) || compareName(a.model, b.model);
   });
-  return { range, usage, providers, warnings: [...new Set(warnings)], recordCount: seen.size };
+  return { range, usage, models, warnings: [...new Set(warnings)], recordCount: seen.size };
 }

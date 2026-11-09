@@ -7,29 +7,32 @@ import type { UsageReport } from '../src/types.ts';
 const report: UsageReport = {
   range: parseRange('24h', Date.parse('2026-11-09T12:00:00Z')),
   usage: { input: 110, output: 1234574, cacheRead: 90, cacheWrite: 0, totalTokens: 1234774 },
-  providers: [
-    { provider: 'provider-a', usage: { input: 10, output: 1234567, cacheRead: 90, cacheWrite: 0, totalTokens: 1234667 }, recordCount: 1 },
-    { provider: 'provider-b', usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 100 }, recordCount: 1 },
+  models: [
+    { provider: 'provider-a', model: 'model-a', usage: { input: 10, output: 1234567, cacheRead: 90, cacheWrite: 0, totalTokens: 1234667 }, recordCount: 1 },
+    { provider: 'provider-b', model: 'model-b', usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 100 }, recordCount: 1 },
     { usage: { input: 0, output: 7, cacheRead: 0, cacheWrite: 0, totalTokens: 7 }, recordCount: 1 },
   ],
   warnings: ['HIDDEN-DIAGNOSTIC'],
   recordCount: 3,
 };
 
-test('report displays overall and provider cache rates without abbreviating token counts', () => {
+test('model report replaces provider breakdown without unused placeholders', () => {
   const rendered = formatReport(report);
-  assert.match(rendered, /总计：1,234,774 tokens/);
-  assert.match(rendered, /缓存命中率：45\.00%/);
-  assert.match(rendered, /按 provider 统计/);
-  assert.match(rendered, /provider-a/);
-  assert.match(rendered, /1,234,667/);
-  assert.match(rendered, /1,234,567/);
-  assert.match(rendered, /缓存命中率：90\.00%/);
-  assert.match(rendered, /provider-b/);
-  assert.match(rendered, /缓存命中率：0\.00%/);
-  assert.match(rendered, /未知（未记录 provider）/);
-  assert.match(rendered, /缓存命中率：—/);
-  assert.ok(rendered.indexOf('provider-a') < rendered.indexOf('provider-b'));
+  for (const text of ['总计：1,234,774 tokens', '缓存命中率：45.00%', '按模型统计',
+    '模型：provider-a/model-a', '总计：1,234,667 tokens', '输入：10', '输出：1,234,567',
+    '缓存读取：90', '缓存写入：0', '缓存命中率：90.00%', '模型：provider-b/model-b',
+    '缓存命中率：0.00%', '模型：未知渠道/未知模型', '缓存命中率：—']) assert.ok(rendered.includes(text), text);
+  assert.equal(rendered.includes('按 provider 统计'), false);
+  assert.ok(rendered.indexOf('provider-a/model-a') < rendered.indexOf('provider-b/model-b'));
+});
+
+test('partially unknown attribution displays each missing label independently', () => {
+  const rendered = formatReport({ ...report, models: [
+    { ...report.models[0], provider: undefined },
+    { ...report.models[1], model: undefined },
+  ] });
+  assert.ok(rendered.includes('模型：未知渠道/model-a'));
+  assert.ok(rendered.includes('模型：provider-b/未知模型'));
 });
 
 test('all warning presentation is hidden without removing retained diagnostics', () => {
@@ -41,20 +44,23 @@ test('all warning presentation is hidden without removing retained diagnostics',
   assert.equal(warnings.length, 12);
 });
 
-test('old persisted report without providers still renders overall cache rate', () => {
-  const { providers: _providers, ...old } = report;
-  const rendered = formatReport(old as UsageReport);
+test('legacy provider report renders overall only', () => {
+  const { models: _models, ...old } = report;
+  const rendered = formatReport({ ...old, providers: [
+    { provider: 'legacy-only-provider', usage: report.usage, recordCount: 3 },
+  ] } as unknown as UsageReport);
   assert.match(rendered, /总计：1,234,774/);
-  assert.match(rendered, /缓存命中率：45\.00%/);
-  assert.equal(rendered.includes('按 provider 统计'), false);
+  assert.ok(rendered.includes('缓存命中率：45.00%'));
+  for (const text of ['按模型统计', '按 provider 统计', 'legacy-only-provider']) assert.equal(rendered.includes(text), false);
 });
 
-test('empty reports show undefined cache rate and no invented provider breakdown', () => {
+test('empty reports show undefined cache rate and no invented model breakdown', () => {
   const rendered = formatReport({ ...report,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-    providers: [], recordCount: 0 });
+    models: [], recordCount: 0 });
   assert.match(rendered, /总计：0 tokens/);
-  assert.match(rendered, /缓存命中率：—/);
+  assert.ok(rendered.includes('缓存命中率：—'));
+  assert.equal(rendered.includes('按模型统计'), false);
   assert.equal(rendered.includes('按 provider 统计'), false);
   assert.equal(/NaN|Infinity/.test(rendered), false);
 });
