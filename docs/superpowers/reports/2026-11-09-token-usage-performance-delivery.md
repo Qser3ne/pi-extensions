@@ -51,4 +51,4 @@ docs/archive/token-usage/archive.md；独立提交 deea7ed。
 
 ## 集成状态
 
-实现和档案已提交在隔离分支，等待用户集成选择；尚未合入 main、推送或执行 /reload。主工作区的 pi-qser3ne-patch 与 AGENTS.md 保持不变。
+用户选择本地合入 main，已从 c55756a 快进合入 d44e9d0；主工作区重新运行 83 项测试（0 失败、0 跳过）、严格类型检查、打包预检与 diff 检查，均通过。未推送、未执行 /reload、未修改 settings。原有隔离 worktree 保留，主工作区的 pi-qser3ne-patch 与 AGENTS.md 保持不变。
