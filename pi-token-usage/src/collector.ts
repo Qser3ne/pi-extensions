@@ -1,12 +1,12 @@
 import { realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { SnapshotCache, loadSnapshot, saveSnapshot } from './cache.ts';
-import { aggregate, recordKey } from './query.ts';
+import { aggregate, modelKey, recordKey } from './query.ts';
 import { discoverFiles, readUsageFile, type FileSnapshot } from './reader.ts';
 import { reconcileSubagents } from './subagents.ts';
-import type { TimeRange, UsageRecord, UsageReport } from './types.ts';
+import type { ModelIdentity, TimeRange, UsageRecord, UsageReport } from './types.ts';
 
-export async function collectUsage(options: { roots: string[]; cacheDir: string; range: TimeRange; memoryCache?: SnapshotCache }): Promise<UsageReport> {
+export async function collectUsage(options: { roots: string[]; cacheDir: string; range: TimeRange; memoryCache?: SnapshotCache; allowedModels?: readonly ModelIdentity[] }): Promise<UsageReport> {
   const discovery = await discoverFiles(options.roots);
   const memory = options.memoryCache;
   memory?.prune(options.cacheDir, new Set(discovery.files));
@@ -64,5 +64,13 @@ export async function collectUsage(options: { roots: string[]; cacheDir: string;
       summaryKey: childRefs?.length ? recordKey([...new Set(childRefs)].sort()) : r.summaryKey };
   });
   const reconciled = reconcileSubagents(normalized, available);
-  return aggregate(reconciled.records, options.range, [...warnings, ...reconciled.warnings]);
+  // Coordinate complete history before filtering; excluded children must still cover parent summaries.
+  const allowed = options.allowedModels === undefined ? undefined
+    : new Set(options.allowedModels.map(model => modelKey(model.provider, model.id)));
+  const selected = allowed === undefined ? reconciled.records
+    : reconciled.records.filter(record => record.provider !== undefined && record.model !== undefined
+      && allowed.has(modelKey(record.provider, record.model)));
+  const report = aggregate(selected, options.range, [...warnings, ...reconciled.warnings]);
+  if (allowed !== undefined) report.scope = 'current-models';
+  return report;
 }

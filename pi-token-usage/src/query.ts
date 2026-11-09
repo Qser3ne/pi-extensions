@@ -69,6 +69,10 @@ function compareName(a: string | undefined, b: string | undefined): number {
   return a < b ? -1 : 1;
 }
 
+export function modelKey(provider: string | undefined, model: string | undefined): string {
+  return JSON.stringify([provider ?? null, model ?? null]);
+}
+
 export function aggregate(records: UsageRecord[], range: TimeRange, warnings: string[] = []): UsageReport {
   const usage = emptyUsage(), groups = new Map<string, ModelUsage>();
   const seen = new Set<string>();
@@ -76,7 +80,7 @@ export function aggregate(records: UsageRecord[], range: TimeRange, warnings: st
     if (r.timestamp < range.start || r.timestamp > range.end || seen.has(r.key)) continue;
     seen.add(r.key);
     addUsage(usage, r.usage);
-    const key = JSON.stringify([r.provider ?? null, r.model ?? null]);
+    const key = modelKey(r.provider, r.model);
     let group = groups.get(key);
     if (!group) {
       group = { provider: r.provider, model: r.model, usage: emptyUsage(), recordCount: 0 };
