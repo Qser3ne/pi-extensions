@@ -119,6 +119,43 @@ test('post-cutoff child summary cannot replace an eligible in-window summary', a
   assert.equal(r.usage.totalTokens, 10);
 });
 
+test('old protocol snapshots are rebuilt even for unchanged files', async t => {
+  const root = await temporary(t), path = join(root, 's.jsonl'), cacheDir = join(root, 'cache');
+  await session(path, [message()]);
+  const snapshot = await readUsageFile(path);
+  const old = { ...snapshot, version: 2, records: snapshot.records.map(({ provider: _provider, ...r }) => r) };
+  await saveSnapshot(cacheDir, old as any);
+  assert.equal(await loadSnapshot(cacheDir, path), undefined);
+  const rebuilt = await readUsageFile(path, old as any);
+  assert.equal(rebuilt.records[0].provider, 'provider-a');
+  assert.notEqual(rebuilt.records, old.records);
+});
+
+test('cache rejects invalid provider metadata rather than permanently misattributing usage', async t => {
+  const root = await temporary(t), path = join(root, 's.jsonl'), cacheDir = join(root, 'cache');
+  await session(path, [message()]);
+  const snapshot = await readUsageFile(path);
+  for (const provider of [42, null, '', ' ', ' provider-a ']) {
+    await saveSnapshot(cacheDir, { ...snapshot, records: [{ ...snapshot.records[0], provider }] } as any);
+    assert.equal(await loadSnapshot(cacheDir, path), undefined, JSON.stringify(provider));
+  }
+});
+
+test('provider attribution survives persistent cache reuse and incremental append without prompts', async t => {
+  const root = await temporary(t), path = join(root, 's.jsonl'), cacheDir = join(root, 'cache');
+  await session(path, [message('a', 10)]);
+  const first = await readUsageFile(path); await saveSnapshot(cacheDir, first);
+  const cached = await loadSnapshot(cacheDir, path);
+  assert.equal(cached?.records[0].provider, 'provider-a');
+  const same = await readUsageFile(path, cached);
+  assert.equal(same.records, cached?.records);
+  const b = message('b', 20); b.message.provider = 'provider-b';
+  await appendFile(path, JSON.stringify(b) + '\n');
+  const next = await readUsageFile(path, same); await saveSnapshot(cacheDir, next);
+  assert.deepEqual((await loadSnapshot(cacheDir, path))?.records.map(r => r.provider), ['provider-a', 'provider-b']);
+  assert.equal(JSON.stringify(next).includes('PRIVATE-BODY'), false);
+});
+
 test('large irrelevant message content is not copied into statistical records', async t => {
   const root = await temporary(t), path = join(root, 's.jsonl');
   await session(path, [{ type: 'message', message: { role: 'user', content: 'z'.repeat(2_000_000) } }, message()]);

@@ -6,7 +6,7 @@ import { splitSummary } from './subagents.ts';
 import type { UsageRecord } from './types.ts';
 
 export interface FileSnapshot {
-  version: 2; path: string; device: number; inode: number; size: number;
+  version: 3; path: string; device: number; inode: number; size: number;
   mtimeMs: number; ctimeMs: number; offset: number; boundaryHash: string; prefixHash: string;
   headerValid: boolean; parentSource?: string; startedAt?: number; records: UsageRecord[]; warnings: string[];
 }
@@ -57,6 +57,8 @@ function extract(entry: Record<string, any>, source: string, warn: (text: string
   }
   const record: UsageRecord = { key: recordKey(entry), timestamp, usage, source,
     kind: isMessage ? message!.role : entry.type };
+  const provider = isMessage ? message?.provider : entry.provider;
+  if (typeof provider === 'string' && provider.trim()) record.provider = provider.trim();
   if (message?.role === 'toolResult' && typeof message.toolName === 'string') record.toolName = message.toolName;
   return record;
 }
@@ -70,14 +72,14 @@ export async function readUsageFile(path: string, previous?: FileSnapshot): Prom
   const file = await open(path, 'r');
   try {
     const stat = await file.stat();
-    const sameFile = previous?.path === path && previous.device === stat.dev && previous.inode === stat.ino;
+    const sameFile = previous?.version === 3 && previous.path === path && previous.device === stat.dev && previous.inode === stat.ino;
     if (sameFile && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs && previous.ctimeMs === stat.ctimeMs) return previous;
     const boundarySize = Math.min(previous?.offset ?? 0, 256);
     const prefixSize = Math.min(previous?.offset ?? 0, 4096);
     const append = sameFile && previous.headerValid && stat.size > previous.size && previous.offset <= previous.size &&
       await hashBytes(file, previous.offset - boundarySize, boundarySize) === previous.boundaryHash &&
       await hashBytes(file, 0, prefixSize) === previous.prefixHash;
-    const snapshot: FileSnapshot = { version: 2, path, device: stat.dev, inode: stat.ino, size: stat.size,
+    const snapshot: FileSnapshot = { version: 3, path, device: stat.dev, inode: stat.ino, size: stat.size,
       mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, offset: append ? previous.offset : 0, boundaryHash: '', prefixHash: '',
       headerValid: append ? previous.headerValid : false, parentSource: append ? previous.parentSource : undefined,
       startedAt: append ? previous.startedAt : undefined, records: append ? [...previous.records] : [], warnings: [] };

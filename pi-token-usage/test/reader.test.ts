@@ -65,6 +65,34 @@ test('empty in-memory session root never expands to the current working director
   } finally { process.chdir(cwd); }
 });
 
+test('provider attribution uses only the usage entry itself, never adjacent model selection', async t => {
+  const root = await temporary(t), path = join(root, 'providers.jsonl');
+  const assistant = message('assistant', 10);
+  const missing = message('missing', 20);
+  delete (missing.message as { provider?: string }).provider;
+  await session(path, [
+    { type: 'model_change', provider: 'not-the-source', modelId: 'm', timestamp: time },
+    assistant,
+    { type: 'usage', timestamp: time, provider: ' custom ', usage: { input: 30 } },
+    missing,
+    { type: 'compaction', timestamp: time, usage: { output: 40 } },
+    { type: 'branch_summary', timestamp: time, provider: 'summary-provider', usage: { output: 50 } },
+    { type: 'message', timestamp: time, message: { role: 'toolResult', toolName: 'classify', provider: 'classifier', usage: { input: 60 } } },
+  ]);
+  const snapshot = await readUsageFile(path);
+  assert.deepEqual(snapshot.records.map(r => r.provider),
+    ['provider-a', 'custom', undefined, undefined, 'summary-provider', 'classifier']);
+});
+
+test('invalid provider values keep valid usage unattributed', async t => {
+  const root = await temporary(t), path = join(root, 'providers.jsonl');
+  await session(path, [null, 42, '', '  '].map((provider, i) =>
+    ({ type: 'usage', id: String(i), timestamp: time, provider, usage: { input: 1 } })));
+  const snapshot = await readUsageFile(path);
+  assert.equal(snapshot.records.length, 4);
+  assert.ok(snapshot.records.every(r => r.provider === undefined));
+});
+
 test('empty or missing discovery root is a valid empty scan', async t => {
   const root = await temporary(t);
   assert.deepEqual((await discoverFiles([join(root, 'missing')])).files, []);
