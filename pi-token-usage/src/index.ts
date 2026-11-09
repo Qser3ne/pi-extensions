@@ -37,7 +37,7 @@ export default function tokenUsage(pi: ExtensionAPI): void {
       }
       if (current !== generation) return; // A replaced session must not receive an old report.
       pi.appendEntry<UsageReport>(reportType, report);
-      if (ctx.mode === 'rpc') ctx.ui.notify(formatReport(report), report.warnings.length ? 'warning' : 'info');
+      if (ctx.mode === 'rpc') ctx.ui.notify(formatReport(report), 'info');
     },
   });
 }

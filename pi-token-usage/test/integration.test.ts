@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
-import { cp, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { message, session, temporary } from './fixtures.ts';
@@ -39,7 +39,12 @@ test('actual Pi labeled branching does not duplicate reparented assistant or com
 test('live Pi RPC executes tokens and exits without starting an agent turn', { timeout: 20000 }, async t => {
   const root = await temporary(t), agent = join(root, 'agent'), sources = join(agent, 'sessions');
   await mkdir(sources, { recursive: true });
-  await session(join(sources, 'fixture.jsonl'), [message('rpc', 123, { timestamp: new Date().toISOString() })]);
+  const now = new Date().toISOString();
+  const a = message('rpc-a', 103, { timestamp: now }), b = message('rpc-b', 20, { timestamp: now });
+  a.message.usage = { input: 3, output: 0, cacheRead: 100, cacheWrite: 0, totalTokens: 103 };
+  b.message.provider = 'provider-b';
+  const fixture = join(sources, 'fixture.jsonl');
+  await session(fixture, [a, b]); await appendFile(fixture, '{"unfinished":');
   const cli = join(dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'))), 'bundle', 'cli.js');
   const child = spawn(process.execPath, [cli, '--mode', 'rpc', '--offline', '--no-session', '--no-extensions', '--no-skills',
     '--no-prompt-templates', '--no-context-files', '--no-tools', '--no-themes', '-e', join(repo, 'src/index.ts')],
@@ -62,7 +67,12 @@ test('live Pi RPC executes tokens and exits without starting an agent turn', { t
   child.stdin.write(JSON.stringify({ id: 'query', type: 'prompt', message: '/tokens 24h' }) + '\n');
   assert.equal(await exit, 0, stderr);
   assert.ok(records.some(r => r.type === 'response' && r.id === 'query' && r.success === true), JSON.stringify(records));
-  assert.ok(records.some(r => r.type === 'extension_ui_request' && r.method === 'notify' && String(r.message).includes('总计：123')));
+  const report = records.find(r => r.type === 'extension_ui_request' && r.method === 'notify' && String(r.message).includes('总计：123'));
+  assert.ok(report, JSON.stringify(records));
+  for (const text of ['按 provider 统计', 'provider-a', 'provider-b', '缓存命中率：81.30%', '缓存命中率：97.09%', '缓存命中率：0.00%'])
+    assert.ok(report.message.includes(text), text);
+  assert.equal(report.message.includes('数据存在缺失或不精确部分'), false);
+  assert.equal(report.message.includes('末行尚未写完'), false);
   assert.equal(records.some(r => r.type === 'agent_start'), false);
 });
 
