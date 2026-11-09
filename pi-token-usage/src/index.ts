@@ -2,12 +2,14 @@ import { getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Text } from '@earendil-works/pi-tui';
 import { join } from 'node:path';
 import { collectUsage } from './collector.ts';
+import { SnapshotCache } from './cache.ts';
 import { formatReport, usageHelp } from './format.ts';
 import { parseRange } from './query.ts';
 import type { UsageReport } from './types.ts';
 
 const reportType = 'pi-token-usage.report';
 export default function tokenUsage(pi: ExtensionAPI): void {
+  const memoryCache = new SnapshotCache();
   let generation = 0;
   let queried = false;
   pi.on('session_shutdown', () => { generation++; });
@@ -30,7 +32,7 @@ export default function tokenUsage(pi: ExtensionAPI): void {
       if (!queried && ctx.hasUI) ctx.ui.notify('正在读取本机 Pi 用量；首次查询可能较慢…', 'info');
       queried = true;
       let report: UsageReport;
-      try { report = await collectUsage({ roots, cacheDir: join(agentDir, 'pi-token-usage', 'cache-v1'), range }); }
+      try { report = await collectUsage({ roots, cacheDir: join(agentDir, 'pi-token-usage', 'cache-v1'), range, memoryCache }); }
       catch (error) {
         if (current === generation && ctx.hasUI) ctx.ui.notify(`用量查询失败：${error instanceof Error ? error.message : String(error)}`, 'error');
         return;

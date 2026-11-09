@@ -1,13 +1,15 @@
 import { realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
-import { loadSnapshot, saveSnapshot } from './cache.ts';
+import { SnapshotCache, loadSnapshot, saveSnapshot } from './cache.ts';
 import { aggregate, recordKey } from './query.ts';
 import { discoverFiles, readUsageFile, type FileSnapshot } from './reader.ts';
 import { reconcileSubagents } from './subagents.ts';
 import type { TimeRange, UsageRecord, UsageReport } from './types.ts';
 
-export async function collectUsage(options: { roots: string[]; cacheDir: string; range: TimeRange }): Promise<UsageReport> {
+export async function collectUsage(options: { roots: string[]; cacheDir: string; range: TimeRange; memoryCache?: SnapshotCache }): Promise<UsageReport> {
   const discovery = await discoverFiles(options.roots);
+  const memory = options.memoryCache;
+  memory?.prune(options.cacheDir, new Set(discovery.files));
   const warnings = [...discovery.warnings], records: UsageRecord[] = [];
   const available = new Set<string>();
   const snapshots: FileSnapshot[] = [];
@@ -15,17 +17,24 @@ export async function collectUsage(options: { roots: string[]; cacheDir: string;
   async function worker(): Promise<void> {
     while (next < discovery.files.length) {
       const path = discovery.files[next++];
-      let cached;
-      try { cached = await loadSnapshot(options.cacheDir, path); }
-      catch { warnings.push('部分缓存无法读取，已回退会话扫描'); }
+      let cached = memory?.get(options.cacheDir, path);
+      if (!cached) {
+        try { cached = await loadSnapshot(options.cacheDir, path); }
+        catch { warnings.push('部分缓存无法读取，已回退会话扫描'); }
+      }
       try {
         const snapshot = await readUsageFile(path, cached);
         if (snapshot.headerValid) available.add(path);
         snapshots.push(snapshot);
         records.push(...snapshot.records); warnings.push(...snapshot.warnings);
-        try { if (snapshot !== cached) await saveSnapshot(options.cacheDir, snapshot); }
+        let persisted = snapshot === cached;
+        try { if (!persisted) { await saveSnapshot(options.cacheDir, snapshot); persisted = true; } }
         catch { warnings.push('部分缓存无法写入，本次统计仍有效；下次可能重新扫描'); }
+        // Do not let memory hide a failed write: the next query must retry persistence.
+        if (persisted) memory?.set(options.cacheDir, snapshot);
+        else memory?.delete(options.cacheDir, path);
       } catch (error) {
+        memory?.delete(options.cacheDir, path);
         warnings.push(`无法完整扫描会话：${path}（${error instanceof Error ? error.message : String(error)}）`);
       }
     }

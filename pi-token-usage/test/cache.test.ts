@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { collectUsage } from '../src/collector.ts';
-import { loadSnapshot, saveSnapshot } from '../src/cache.ts';
+import { SnapshotCache, loadSnapshot, saveSnapshot } from '../src/cache.ts';
 import { readUsageFile } from '../src/reader.ts';
 import { parseRange } from '../src/query.ts';
 import { message, session, temporary, time } from './fixtures.ts';
@@ -178,6 +178,107 @@ test('cache rejects malformed model metadata rather than reusing corrupt attribu
     await saveSnapshot(cacheDir, { ...snapshot, records: [{ ...snapshot.records[0], model }] } as any);
     assert.equal(await loadSnapshot(cacheDir, path), undefined, JSON.stringify(model));
   }
+});
+
+test('warm memory snapshots avoid rereading disk JSON while checking source files', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'), cacheDir = join(root, 'cache');
+  await mkdir(sources); await session(join(sources, 's.jsonl'), [message('a', 10)]);
+  const memoryCache = new SnapshotCache(), options = { roots: [sources], cacheDir, range, memoryCache };
+  const first = await collectUsage(options);
+  const disk = join(cacheDir, (await readdir(cacheDir))[0]), saved = disk + '.saved';
+  await rename(disk, saved); await mkdir(disk);
+  try {
+    const second = await collectUsage(options);
+    assert.equal(second.usage.totalTokens, 10);
+    assert.deepEqual(second.models, first.models);
+    assert.equal(second.warnings.some(w => w.includes('缓存无法读取')), false);
+    assert.equal(second.warnings.some(w => w.includes('缓存无法写入')), false);
+  } finally { await rm(disk, { recursive: true }); await rename(saved, disk); }
+});
+
+test('memory reuse preserves append rewrite replacement deletion moving windows and concurrent totals', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'), cacheDir = join(root, 'cache'), path = join(sources, 's.jsonl');
+  await mkdir(sources);
+  const memoryCache = new SnapshotCache(), options = { roots: [sources], cacheDir, range, memoryCache };
+  const check = async (want: number) => {
+    const actual = await collectUsage(options);
+    const baseline = await collectUsage({ ...options, memoryCache: undefined, cacheDir: join(root, 'baseline') });
+    assert.equal(actual.usage.totalTokens, want);
+    assert.deepEqual({ usage: actual.usage, models: actual.models, records: actual.recordCount },
+      { usage: baseline.usage, models: baseline.models, records: baseline.recordCount });
+  };
+  await session(path, [message('a', 10)]); await check(10);
+  const b = message('b', 20); b.message.provider = 'other'; b.message.model = 'model-b';
+  await appendFile(path, JSON.stringify(b) + '\n'); await check(30);
+  const oldSize = (await readFile(path)).length;
+  await session(path, [message('a', 40), b]);
+  assert.equal((await readFile(path)).length, oldSize);
+  await check(60);
+  const replacement = join(root, 'new.jsonl'); await session(replacement, [message('c', 7)]);
+  await rename(replacement, path); await check(7);
+  await rm(path); await check(0); assert.equal(memoryCache.get(cacheDir, path), undefined);
+  await session(path, [message('d', 3)]); await check(3);
+  const moved = await collectUsage({ ...options, range: parseRange('1h', range.end + 86400000) });
+  assert.equal(moved.usage.totalTokens, 0); assert.deepEqual(moved.models, []);
+  const parallel = await Promise.all(Array.from({ length: 4 }, () => collectUsage(options)));
+  assert.deepEqual(parallel.map(r => r.usage.totalTokens), [3, 3, 3, 3]);
+  assert.ok(parallel.every(r => r.recordCount === 1));
+});
+
+test('failed cache writes keep retrying and recover before admitting memory snapshots', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'), cacheDir = join(root, 'blocked');
+  await mkdir(sources); await session(join(sources, 's.jsonl'), [message('a', 10)]);
+  await writeFile(cacheDir, 'not a directory');
+  const memoryCache = new SnapshotCache(), options = { roots: [sources], cacheDir, range, memoryCache };
+  for (let i = 0; i < 2; i++) {
+    const report = await collectUsage(options);
+    assert.equal(report.usage.totalTokens, 10);
+    assert.ok(report.warnings.some(w => w.includes('缓存无法写入')));
+    assert.equal(memoryCache.size, 0);
+  }
+  await rm(cacheDir);
+  const recovered = await collectUsage(options);
+  assert.equal(recovered.usage.totalTokens, 10);
+  assert.equal(recovered.warnings.some(w => w.includes('缓存无法写入')), false);
+  assert.equal((await readdir(cacheDir)).length, 1);
+  assert.equal(memoryCache.size, 1);
+});
+
+test('a changed source cannot retain its new memory snapshot after persistence fails', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'), cacheDir = join(root, 'cache'), path = join(sources, 's.jsonl');
+  await mkdir(sources); await session(path, [message('a', 10)]);
+  const memoryCache = new SnapshotCache(), options = { roots: [sources], cacheDir, range, memoryCache };
+  await collectUsage(options); assert.equal(memoryCache.size, 1);
+  await rm(cacheDir, { recursive: true }); await writeFile(cacheDir, 'blocked');
+  await appendFile(path, JSON.stringify(message('b', 20)) + '\n');
+  for (let i = 0; i < 2; i++) {
+    const report = await collectUsage(options);
+    assert.equal(report.usage.totalTokens, 30);
+    assert.ok(report.warnings.some(w => w.includes('缓存无法写入')));
+    assert.equal(memoryCache.size, 0);
+  }
+  await rm(cacheDir);
+  const recovered = await collectUsage(options);
+  assert.equal(recovered.usage.totalTokens, 30);
+  assert.equal(recovered.warnings.some(w => w.includes('缓存无法写入')), false);
+  const disk = await loadSnapshot(cacheDir, path);
+  assert.equal(disk?.records.length, 2); assert.equal(memoryCache.size, 1);
+});
+
+test('unreadable sources cannot reuse prior memory consumption', async t => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) { t.skip('requires non-root POSIX permissions'); return; }
+  const root = await temporary(t), sources = join(root, 'sessions'), cacheDir = join(root, 'cache'), path = join(sources, 's.jsonl');
+  await mkdir(sources); await session(path, [message('a', 10)]);
+  const memoryCache = new SnapshotCache(), options = { roots: [sources], cacheDir, range, memoryCache };
+  assert.equal((await collectUsage(options)).usage.totalTokens, 10);
+  await chmod(path, 0o000);
+  try {
+    const unreadable = await collectUsage(options);
+    assert.equal(unreadable.usage.totalTokens, 0);
+    assert.ok(unreadable.warnings.some(w => w.includes('无法完整扫描会话')));
+    assert.equal(memoryCache.get(cacheDir, path), undefined);
+  } finally { await chmod(path, 0o600); }
+  assert.equal((await collectUsage(options)).usage.totalTokens, 10);
 });
 
 test('large irrelevant message content is not copied into statistical records', async t => {

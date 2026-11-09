@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { appendFile, mkdir, readdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 import extension from '../src/index.ts';
@@ -90,6 +90,23 @@ test('used model pairs render in TUI and RPC while hidden diagnostics remain in 
     assert.deepEqual(h.entries[1].data.usage, data.usage);
     assert.deepEqual(h.entries[1].data.models, data.models);
   }
+});
+
+test('extension instances retain independent warm snapshots rather than global state', async t => {
+  const root = await temporary(t), sources = join(root, 'sessions'); await mkdir(sources);
+  process.env.PI_CODING_AGENT_DIR = root; t.after(() => { delete process.env.PI_CODING_AGENT_DIR; });
+  await session(join(sources, 's.jsonl'), [message('a', 10, { timestamp: new Date().toISOString() })]);
+  const first = host('rpc', sources); await first.run('1h');
+  const cacheDir = join(root, 'pi-token-usage', 'cache-v1');
+  const disk = join(cacheDir, (await readdir(cacheDir))[0]), saved = disk + '.saved';
+  await rename(disk, saved); await mkdir(disk);
+  try {
+    await first.run('1h');
+    assert.equal(first.entries[1].data.warnings.some((w: string) => w.includes('缓存无法读取')), false);
+    const second = host('rpc', sources); await second.run('1h');
+    assert.equal(second.entries[0].data.usage.totalTokens, 10);
+    assert.ok(second.entries[0].data.warnings.some((w: string) => w.includes('缓存无法读取')));
+  } finally { await rm(disk, { recursive: true }); await rename(saved, disk); }
 });
 
 test('invalid arguments still warn and true collection failures remain errors', async t => {
